@@ -18,13 +18,22 @@ namespace Bitmessage.Global
             return BitConverter.GetBytes(Value);
         }
 
-        public static ulong ToInt64(byte[] Data, int Offset = 0)
+        public static ulong ToUInt64(byte[] Data, int Offset = 0)
         {
             if (BitConverter.IsLittleEndian)
             {
                 return BitConverter.ToUInt64(Data.Skip(Offset).Take(8).Reverse().ToArray(), 0);
             }
             return BitConverter.ToUInt64(Data, Offset);
+        }
+
+        public static uint ToUInt32(byte[] Data, int Offset = 0)
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                return BitConverter.ToUInt32(Data.Skip(Offset).Take(4).Reverse().ToArray(), 0);
+            }
+            return BitConverter.ToUInt32(Data, Offset);
         }
 
         public static void Inc(byte[] Data)

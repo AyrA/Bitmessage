@@ -11,7 +11,7 @@ namespace Bitmessage.Global
         public static double GetTargetPOWValue(byte[] Data, uint PayloadLengthExtraBytes = DEFAULT_DIFFICULTY, uint NonceTrialsPerByte = DEFAULT_DIFFICULTY)
         {
             var PayloadToCheck = Data.Skip(8).ToArray();
-            var Expiration = Tools.FromUnixTime(Tools.ToInt64(PayloadToCheck.Take(8).ToArray()));
+            var Expiration = Tools.FromUnixTime(Tools.ToUInt64(PayloadToCheck.Take(8).ToArray()));
             var TTL = Math.Max(300, (int)Expiration.Subtract(DateTime.UtcNow).TotalSeconds);
             return ulong.MaxValue / (NonceTrialsPerByte * (PayloadToCheck.Length + 8 + PayloadLengthExtraBytes + ((TTL * (PayloadToCheck.Length + 8 + PayloadLengthExtraBytes)) / Math.Pow(2, 16))));
         }
@@ -27,7 +27,7 @@ namespace Bitmessage.Global
             var Nonce = Data.Take(8).ToArray();
             var PayloadToCheck = Data.Skip(8).ToArray();
             var Hash = Tools.DoubleSha512(Nonce.Concat(Tools.Sha512(PayloadToCheck)).ToArray());
-            return Tools.ToInt64(Hash);
+            return Tools.ToUInt64(Hash);
         }
 
         public static ulong DoPOW(byte[] InitialHash, ulong TargetDifficulty)
