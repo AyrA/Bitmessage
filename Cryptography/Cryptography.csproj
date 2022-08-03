@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>Bitmessage.Cryptography</AssemblyName>
+    <RootNamespace>Bitmessage.Cryptography</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DevHawk.RIPEMD160" Version="3.0.27" />
+    <PackageReference Include="Secp256k1.Native" Version="0.1.23" />
+    <PackageReference Include="Secp256k1.Net" Version="0.1.55" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Global\Global.csproj" />
+  </ItemGroup>
+
+</Project>
