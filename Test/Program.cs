@@ -29,6 +29,8 @@ namespace Test
         static async Task Main()
         {
             CheckNativeMethods();
+            TestAddress();
+            return;
             LoadPeers();
             Print.Info("Loading storage");
             Storage = new IndexedStorage(DatabaseFile);
@@ -57,13 +59,30 @@ namespace Test
             Print.Info("Saved {0} objects", Storage.Count);
         }
 
+        private static void TestAddress()
+        {
+            Print.Info("Creating a test address...");
+            var TestAddress = Bitmessage.Cryptography.AddressGenerator.GenerateAddress(false);
+            Print.Info("Address: {0}", TestAddress.EncodedAddress);
+            Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
+            Print.Info("Version: {0}", TestAddress.AddressVersion);
+            Print.Info("Stream : {0}", TestAddress.AddressStream);
+            //Change stream and version number
+            Print.Info("Changing address properties");
+            TestAddress.ComputeEncodedAddress(20UL, 99UL);
+            Print.Info("Address: {0}", TestAddress.EncodedAddress);
+            Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
+            Print.Info("Version: {0}", TestAddress.AddressVersion);
+            Print.Info("Stream : {0}", TestAddress.AddressStream);
+        }
+
         private static void CleanupStorage()
         {
             int purged = 0;
             var PurgeCutoff = DateTime.UtcNow.AddHours(1);
             foreach (var Item in Storage.EnumerateAllContent())
             {
-                var Expiration = Tools.FromUnixTime(Tools.ToInt64(Item, 8));
+                var Expiration = Tools.FromUnixTime(Tools.ToUInt64(Item, 8));
                 if (Expiration < PurgeCutoff)
                 {
                     var Hash = Tools.DoubleSha512(Item).Take(IndexedStorage.INDEX_SIZE).ToArray();
