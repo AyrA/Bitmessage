@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SimpleBase" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="BitMsgHash.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
