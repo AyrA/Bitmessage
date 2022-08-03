@@ -5,7 +5,7 @@ This is a Bitmessage client written in C# that tries to solve the biggest proble
 1. The client is a big mess of code that's very difficult to find your way through
 2. Being written in Python, it's not great performance wise
 3. Python code is extremely unfriendly to port to different languages due to the absence of static typing
-4. Third party library usage that's difficult to set up (seriously, try getting the source code running on Windows)
+4. Third party library usage that's difficult to set up (seriously, try getting the source code running with an UI on Windows)
 
 # Project structure
 
@@ -31,6 +31,12 @@ Here you find things such as:
 
 This component contains the classes that represent all the objects sent through the network.
 It also contains a class you can use that speaks the bitmessage network protocol.
+
+## Bitmessage.Cryptography
+
+This component contains the cryptography related operations.
+This includes address handling (generator and validator)
+as well as the message encryption and decryption routines.
 
 ## Bitmessage.Storage
 
@@ -126,7 +132,6 @@ so it can be added to the repository.
 *Not necessarily in order of importance*
 
 - GPU accelerated POW function
-- Address generator and validator
 - Public key request handler
 - Encryption and decryption function
 - TLS\*
@@ -139,10 +144,11 @@ Because of this, TLS is fairly low on the priority list.
 
 # Completed steps
 
-- Implement basic networking component and protocol
-- Implement all network objects\*
-- Implement persistent storage for objects and peers
-- Implement POW function
+- Basic networking component and protocol
+- All network objects\*
+- Persistent storage for objects and peers
+- POW function
+- Address generator and validator
 
 \* "ping" and "pong" are not implemented, but they do not carry any data anyways.
 These two functions aren't even contained in the official documentation in the wiki,
