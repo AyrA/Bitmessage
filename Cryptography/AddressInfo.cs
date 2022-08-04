@@ -25,6 +25,7 @@ namespace Bitmessage.Cryptography
         /// Private key used for encryption
         /// </summary>
         public byte[] PrivateEncryptionKey { get; private set; }
+
         /// <summary>
         /// Public key used for signing
         /// </summary>
@@ -33,6 +34,7 @@ namespace Bitmessage.Cryptography
         /// Public key used for encryption
         /// </summary>
         public byte[] PublicEncryptionKey { get; private set; }
+
         /// <summary>
         /// Encoded bitmessage address
         /// </summary>
@@ -41,6 +43,7 @@ namespace Bitmessage.Cryptography
         /// <see cref="ComputeEncodedAddress(ulong, ulong)"/> is called.
         /// </remarks>
         public string EncodedAddress { get; private set; }
+
         /// <summary>
         /// Gets the version of <see cref="EncodedAddress"/>
         /// </summary>
@@ -73,6 +76,41 @@ namespace Bitmessage.Cryptography
             ComputeEncodedAddress(AddressGenerator.DEFAULT_VERSION, AddressGenerator.DEFAULT_STREAM);
         }
 
+        public AddressInfo(byte[] privateEncryptionKey, byte[] privateSigningKey)
+        {
+            if (privateEncryptionKey is null)
+            {
+                throw new ArgumentNullException(nameof(privateEncryptionKey));
+            }
+
+            if (privateSigningKey is null)
+            {
+                throw new ArgumentNullException(nameof(privateSigningKey));
+            }
+            if (privateEncryptionKey.Length != Secp256k1.PRIVKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {Secp256k1.PRIVKEY_LENGTH} bytes", nameof(privateEncryptionKey));
+            }
+            if (privateSigningKey.Length != Secp256k1.PRIVKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {Secp256k1.PRIVKEY_LENGTH} bytes", nameof(privateSigningKey));
+            }
+
+            using var generator = new Secp256k1();
+            PrivateEncryptionKey = (byte[])privateEncryptionKey.Clone();
+            PrivateSigningKey = (byte[])privateSigningKey.Clone();
+            PublicEncryptionKey = new byte[Secp256k1.PUBKEY_LENGTH];
+            PublicSigningKey = new byte[Secp256k1.PUBKEY_LENGTH];
+            if (!generator.PublicKeyCreate(new Span<byte>(PublicEncryptionKey), new Span<byte>(privateEncryptionKey)))
+            {
+                throw new FormatException($"{nameof(privateEncryptionKey)} is an invalid private key");
+            }
+            if (!generator.PublicKeyCreate(new Span<byte>(PublicSigningKey), new Span<byte>(privateSigningKey)))
+            {
+                throw new FormatException($"{nameof(privateSigningKey)} is an invalid private key");
+            }
+        }
+
         /// <summary>
         /// Computes the bitmessage address
         /// </summary>
@@ -86,7 +124,11 @@ namespace Bitmessage.Cryptography
         public string ComputeEncodedAddress(ulong version, ulong stream)
         {
             using var ripe = new RIPEMD160();
-            var Hash = Tools.Sha512(PublicSigningKey.Concat(PublicEncryptionKey).ToArray());
+            var CombinedKeys = new ECKey(PrivateSigningKey).UncompressedPublicKey
+                .Concat(new ECKey(PrivateEncryptionKey).UncompressedPublicKey)
+                .ToArray();
+            //using var generator = new Secp256k1();
+            var Hash = Tools.Sha512(CombinedKeys);
             Hash = ripe.ComputeHash(Hash).SkipWhile(m => m == 0).ToArray();
             var Data = VarInt.EncodeVarInt(version)
                 .Concat(VarInt.EncodeVarInt(stream))
@@ -137,6 +179,10 @@ namespace Bitmessage.Cryptography
         /// <param name="Output">Stream</param>
         public void Serialize(Stream Output)
         {
+            if (PrivateEncryptionKey is null || PrivateSigningKey is null)
+            {
+                throw new InvalidOperationException("Cannot serialize an address without private keys");
+            }
             using var BW = Output.GetNativeWriter();
             BW.Write(PrivateSigningKey.Length);
             BW.Write(PrivateSigningKey);
@@ -157,11 +203,17 @@ namespace Bitmessage.Cryptography
             PrivateEncryptionKey = BR.ReadBytes(BR.ReadInt32());
             using var Generator = new Secp256k1();
             var Out = new Span<byte>(PublicSigningKey);
-            Generator.PublicKeyCreate(Out, new Span<byte>(PrivateSigningKey));
+            //do not immediately abort to ensure we always read all data.
+            //This way we can guarantee that the stream is after the faulty object
+            var ok = Generator.PublicKeyCreate(Out, new Span<byte>(PrivateSigningKey));
             Out = new Span<byte>(PublicEncryptionKey);
-            Generator.PublicKeyCreate(Out, new Span<byte>(PrivateEncryptionKey));
+            ok = ok && Generator.PublicKeyCreate(Out, new Span<byte>(PrivateEncryptionKey));
             AddressVersion = BR.ReadUInt64();
             AddressStream = BR.ReadUInt64();
+            if (!ok)
+            {
+                throw new InvalidDataException("Serialized private keys are invalid");
+            }
             ComputeEncodedAddress(AddressVersion, AddressStream);
         }
 
@@ -245,6 +297,42 @@ namespace Bitmessage.Cryptography
             using var MS = new MemoryStream(Base85.Decode(Address[ADDR_PREFIX.Length..]), false);
             VarInt.DecodeVarInt(MS);
             return VarInt.DecodeVarInt(MS);
+        }
+
+        /// <summary>
+        /// Creates an address information object from a public key
+        /// </summary>
+        /// <param name="publicEncryptionKey">Public encryption key</param>
+        /// <param name="publicSigningKey">Public signature key</param>
+        /// <returns>Address info with only the public keys filled in</returns>
+        /// <remarks>
+        /// You need to call <see cref="ComputeEncodedAddress(ulong, ulong)"/>
+        /// to get the bitmessage address.
+        /// </remarks>
+        public static AddressInfo FromPublicKeys(byte[] publicEncryptionKey, byte[] publicSigningKey)
+        {
+            if (publicEncryptionKey is null)
+            {
+                throw new ArgumentNullException(nameof(publicEncryptionKey));
+            }
+
+            if (publicSigningKey is null)
+            {
+                throw new ArgumentNullException(nameof(publicSigningKey));
+            }
+            if (publicEncryptionKey.Length != Secp256k1.PUBKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {Secp256k1.PUBKEY_LENGTH} bytes. Is it in serialized format?", nameof(publicEncryptionKey));
+            }
+            if (publicSigningKey.Length != Secp256k1.PUBKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {Secp256k1.PUBKEY_LENGTH} bytes. Is it in serialized format?", nameof(publicSigningKey));
+            }
+            return new AddressInfo()
+            {
+                PublicEncryptionKey = (byte[])publicEncryptionKey.Clone(),
+                PublicSigningKey = (byte[])publicEncryptionKey.Clone()
+            };
         }
     }
 }

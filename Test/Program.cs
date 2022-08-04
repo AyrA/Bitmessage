@@ -61,8 +61,10 @@ namespace Test
 
         private static void TestAddress()
         {
+            /*
+            //Random address
             Print.Info("Creating a test address...");
-            var TestAddress = Bitmessage.Cryptography.AddressGenerator.GenerateAddress(false);
+            var TestAddress = Bitmessage.Cryptography.AddressGenerator.GenerateRandomAddress(false, 1, 3);
             Print.Info("Address: {0}", TestAddress.EncodedAddress);
             Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
             Print.Info("Version: {0}", TestAddress.AddressVersion);
@@ -74,6 +76,17 @@ namespace Test
             Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
             Print.Info("Version: {0}", TestAddress.AddressVersion);
             Print.Info("Stream : {0}", TestAddress.AddressStream);
+            Print.Info(Convert.ToBase64String(TestAddress.PublicSigningKey));
+            //*/
+
+            //Deterministic address
+            var TestAddress = Bitmessage.Cryptography.AddressGenerator.GenerateDeterministicAddress("general", false, 1, 4);
+            Print.Info("Address: {0}", TestAddress.EncodedAddress);
+            Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
+            Print.Info("Version: {0}", TestAddress.AddressVersion);
+            Print.Info("Stream : {0}", TestAddress.AddressStream);
+            //Check if the address is identical to the address generated via PyBitmessage
+            Print.Info("Compare: {0}", TestAddress.EncodedAddress == "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r");
         }
 
         private static void CleanupStorage()
