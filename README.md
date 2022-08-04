@@ -148,7 +148,7 @@ Because of this, TLS is fairly low on the priority list.
 - All network objects\*
 - Persistent storage for objects and peers
 - POW function
-- Address generator and validator
+- Address generator (random and deterministic) and validator
 
 \* "ping" and "pong" are not implemented, but they do not carry any data anyways.
 These two functions aren't even contained in the official documentation in the wiki,
