@@ -76,6 +76,32 @@ namespace Bitmessage.Global
             return Hasher.ComputeHash(Hasher.ComputeHash(Data));
         }
 
+        public static byte[] Sha256(byte[] Data)
+        {
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+
+            using var Hasher = System.Security.Cryptography.SHA256.Create();
+            return Hasher.ComputeHash(Data);
+        }
+
+        /// <summary>
+        /// This is faster than calling <see cref="Sha256(byte[])"/> twice
+        /// </summary>
+        /// <param name="Data"></param>
+        /// <returns></returns>
+        public static byte[] DoubleSha256(byte[] Data)
+        {
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+            using var Hasher = System.Security.Cryptography.SHA256.Create();
+            return Hasher.ComputeHash(Hasher.ComputeHash(Data));
+        }
+
         public static DateTime FromUnixTime(ulong UnixTime)
         {
             return Epoch.AddSeconds(UnixTime);
