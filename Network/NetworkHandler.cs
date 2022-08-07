@@ -46,7 +46,7 @@ namespace Bitmessage.Network
         {
             return new Objects.Version()
             {
-                Nonce = BitConverter.ToUInt64(Tools.GetCryptoBytes(8)),
+                Nonce = BitConverter.ToUInt64(Tools.GetSafeRandomBytes(8)),
                 ProtocolVersion = VersionProtocol.Version3,
                 Services = VersionServices.NetworkNode,
                 ReceiveAddress = new NetworkAddress()

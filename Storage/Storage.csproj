@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Cryptography\Cryptography.csproj" />
     <ProjectReference Include="..\Global\Global.csproj" />
   </ItemGroup>
 

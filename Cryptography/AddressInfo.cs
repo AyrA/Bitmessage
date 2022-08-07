@@ -1,6 +1,4 @@
 ﻿using Bitmessage.Global;
-using DevHawk.Security.Cryptography;
-using Secp256k1Net;
 using System;
 using System.IO;
 using System.Linq;
@@ -20,20 +18,11 @@ namespace Bitmessage.Cryptography
         /// <summary>
         /// Private key used for signing
         /// </summary>
-        public byte[] PrivateSigningKey { get; private set; }
+        public ECKey SigningKey { get; private set; }
         /// <summary>
         /// Private key used for encryption
         /// </summary>
-        public byte[] PrivateEncryptionKey { get; private set; }
-
-        /// <summary>
-        /// Public key used for signing
-        /// </summary>
-        public byte[] PublicSigningKey { get; private set; }
-        /// <summary>
-        /// Public key used for encryption
-        /// </summary>
-        public byte[] PublicEncryptionKey { get; private set; }
+        public ECKey EncryptionKey { get; private set; }
 
         /// <summary>
         /// Encoded bitmessage address
@@ -69,46 +58,38 @@ namespace Bitmessage.Cryptography
         /// </remarks>
         public AddressInfo()
         {
-
-            using var Generator = new Secp256k1();
-            CreateSigningKey(Generator);
-            CreateEncryptionKey(Generator);
+            EncryptionKey = new ECKey();
+            SigningKey = new ECKey();
             ComputeEncodedAddress(AddressGenerator.DEFAULT_VERSION, AddressGenerator.DEFAULT_STREAM);
         }
 
-        public AddressInfo(byte[] privateEncryptionKey, byte[] privateSigningKey)
+        public AddressInfo(byte[] privateSigningKey, byte[] privateEncryptionKey)
         {
-            if (privateEncryptionKey is null)
-            {
-                throw new ArgumentNullException(nameof(privateEncryptionKey));
-            }
-
             if (privateSigningKey is null)
             {
                 throw new ArgumentNullException(nameof(privateSigningKey));
             }
-            if (privateEncryptionKey.Length != Secp256k1.PRIVKEY_LENGTH)
+            if (privateEncryptionKey is null)
             {
-                throw new ArgumentException($"Key should be {Secp256k1.PRIVKEY_LENGTH} bytes", nameof(privateEncryptionKey));
+                throw new ArgumentNullException(nameof(privateEncryptionKey));
             }
-            if (privateSigningKey.Length != Secp256k1.PRIVKEY_LENGTH)
+            if (privateSigningKey.Length != ECKey.PRIVKEY_LENGTH)
             {
-                throw new ArgumentException($"Key should be {Secp256k1.PRIVKEY_LENGTH} bytes", nameof(privateSigningKey));
+                throw new ArgumentException($"Key should be {ECKey.PRIVKEY_LENGTH} bytes", nameof(privateSigningKey));
+            }
+            if (privateEncryptionKey.Length != ECKey.PRIVKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {ECKey.PRIVKEY_LENGTH} bytes", nameof(privateEncryptionKey));
             }
 
-            using var generator = new Secp256k1();
-            PrivateEncryptionKey = (byte[])privateEncryptionKey.Clone();
-            PrivateSigningKey = (byte[])privateSigningKey.Clone();
-            PublicEncryptionKey = new byte[Secp256k1.PUBKEY_LENGTH];
-            PublicSigningKey = new byte[Secp256k1.PUBKEY_LENGTH];
-            if (!generator.PublicKeyCreate(new Span<byte>(PublicEncryptionKey), new Span<byte>(privateEncryptionKey)))
-            {
-                throw new FormatException($"{nameof(privateEncryptionKey)} is an invalid private key");
-            }
-            if (!generator.PublicKeyCreate(new Span<byte>(PublicSigningKey), new Span<byte>(privateSigningKey)))
-            {
-                throw new FormatException($"{nameof(privateSigningKey)} is an invalid private key");
-            }
+            SigningKey = new ECKey(privateSigningKey);
+            EncryptionKey = new ECKey(privateEncryptionKey);
+        }
+
+        public AddressInfo(ECKey privSign, ECKey privEnc)
+        {
+            SigningKey = privSign ?? throw new ArgumentNullException(nameof(privSign));
+            EncryptionKey = privEnc ?? throw new ArgumentNullException(nameof(privEnc));
         }
 
         /// <summary>
@@ -123,54 +104,27 @@ namespace Bitmessage.Cryptography
         /// </remarks>
         public string ComputeEncodedAddress(ulong version, ulong stream)
         {
-            using var ripe = new RIPEMD160();
-            var CombinedKeys = new ECKey(PrivateSigningKey).UncompressedPublicKey
-                .Concat(new ECKey(PrivateEncryptionKey).UncompressedPublicKey)
+            var CombinedKeys = SigningKey.GetRawPublic()
+                .Concat(EncryptionKey.GetRawPublic())
                 .ToArray();
             //using var generator = new Secp256k1();
-            var Hash = Tools.Sha512(CombinedKeys);
-            Hash = ripe.ComputeHash(Hash).SkipWhile(m => m == 0).ToArray();
+            var Hash = Hashing.Sha512(CombinedKeys);
+            var ripe = new Org.BouncyCastle.Crypto.Digests.RipeMD160Digest();
+            ripe.BlockUpdate(Hash, 0, Hash.Length);
+            ripe.DoFinal(Hash, 0);
+            Hash = Hash
+                .Take(ripe.GetDigestSize())
+                .SkipWhile(m => m == 0)
+                .ToArray();
             var Data = VarInt.EncodeVarInt(version)
                 .Concat(VarInt.EncodeVarInt(stream))
                 .Concat(Hash)
                 .ToArray();
-            var Checksum = Tools.DoubleSha512(Data).Take(4);
+            var Checksum = Hashing.DoubleSha512(Data).Take(4);
             Data = Data.Concat(Checksum).ToArray();
             AddressVersion = version;
             AddressStream = stream;
             return EncodedAddress = ADDR_PREFIX + Base85.Encode(Data);
-        }
-
-        /// <summary>
-        /// Create a signing keypair
-        /// </summary>
-        /// <param name="Generator">Secp256k1 instance</param>
-        public void CreateSigningKey(Secp256k1 Generator)
-        {
-            PublicSigningKey = new byte[Secp256k1.PUBKEY_LENGTH];
-            Span<byte> Input;
-            var Output = new Span<byte>(PublicSigningKey);
-            do
-            {
-                PrivateSigningKey = Tools.GetCryptoBytes(Secp256k1.PRIVKEY_LENGTH);
-                Input = new Span<byte>(PrivateSigningKey);
-            } while (!Generator.PublicKeyCreate(Output, Input));
-        }
-
-        /// <summary>
-        /// Create an encryption keypair
-        /// </summary>
-        /// <param name="Generator">Secp256k1 instance</param>
-        public void CreateEncryptionKey(Secp256k1 Generator)
-        {
-            PublicEncryptionKey = new byte[Secp256k1.PUBKEY_LENGTH];
-            Span<byte> Input;
-            var Output = new Span<byte>(PublicEncryptionKey);
-            do
-            {
-                PrivateEncryptionKey = Tools.GetCryptoBytes(Secp256k1.PRIVKEY_LENGTH);
-                Input = new Span<byte>(PrivateEncryptionKey);
-            } while (!Generator.PublicKeyCreate(Output, Input));
         }
 
         /// <summary>
@@ -179,15 +133,17 @@ namespace Bitmessage.Cryptography
         /// <param name="Output">Stream</param>
         public void Serialize(Stream Output)
         {
-            if (PrivateEncryptionKey is null || PrivateSigningKey is null)
+            if (EncryptionKey is null || SigningKey is null)
             {
-                throw new InvalidOperationException("Cannot serialize an address without private keys");
+                throw new InvalidOperationException("Cannot serialize an incomplete address");
             }
+            var pSig = SigningKey.SerializePrivate();
+            var pEnc = EncryptionKey.SerializePrivate();
             using var BW = Output.GetNativeWriter();
-            BW.Write(PrivateSigningKey.Length);
-            BW.Write(PrivateSigningKey);
-            BW.Write(PrivateEncryptionKey.Length);
-            BW.Write(PrivateEncryptionKey);
+            BW.Write(pSig.Length);
+            BW.Write(pSig);
+            BW.Write(pEnc.Length);
+            BW.Write(pEnc);
             BW.Write(AddressVersion);
             BW.Write(AddressStream);
         }
@@ -199,22 +155,29 @@ namespace Bitmessage.Cryptography
         public void Deserialize(Stream Input)
         {
             using var BR = Input.GetNativeReader();
-            PrivateSigningKey = BR.ReadBytes(BR.ReadInt32());
-            PrivateEncryptionKey = BR.ReadBytes(BR.ReadInt32());
-            using var Generator = new Secp256k1();
-            var Out = new Span<byte>(PublicSigningKey);
-            //do not immediately abort to ensure we always read all data.
-            //This way we can guarantee that the stream is after the faulty object
-            var ok = Generator.PublicKeyCreate(Out, new Span<byte>(PrivateSigningKey));
-            Out = new Span<byte>(PublicEncryptionKey);
-            ok = ok && Generator.PublicKeyCreate(Out, new Span<byte>(PrivateEncryptionKey));
+            SigningKey = new ECKey(BR.ReadBytes(BR.ReadInt32()));
+            EncryptionKey = new ECKey(BR.ReadBytes(BR.ReadInt32()));
             AddressVersion = BR.ReadUInt64();
             AddressStream = BR.ReadUInt64();
-            if (!ok)
-            {
-                throw new InvalidDataException("Serialized private keys are invalid");
-            }
             ComputeEncodedAddress(AddressVersion, AddressStream);
+        }
+
+        public byte[] GetBroadcastHash()
+        {
+            if (string.IsNullOrEmpty(EncodedAddress))
+            {
+                ComputeEncodedAddress(AddressVersion, AddressStream);
+            }
+            return GetBroadcastHash(EncodedAddress);
+        }
+
+        public ECKey GetBroadcastKey()
+        {
+            if (string.IsNullOrEmpty(EncodedAddress))
+            {
+                ComputeEncodedAddress(AddressVersion, AddressStream);
+            }
+            return GetBroadcastKey(EncodedAddress);
         }
 
         /// <summary>
@@ -245,12 +208,37 @@ namespace Bitmessage.Cryptography
                 }
                 var Data = Bytes.SkipLast(4).ToArray();
                 var Checksum = Bytes.TakeLast(4);
-                return Tools.DoubleSha512(Data).Take(4).SequenceEqual(Checksum);
+                return Hashing.DoubleSha512(Data).Take(4).SequenceEqual(Checksum);
             }
             catch
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Gets the hash used for broadcast message encryption and decryption
+        /// </summary>
+        /// <param name="Address">Bitmessage address</param>
+        /// <returns>Broadcast hash</returns>
+        /// <remarks>The result will be 64 bytes in length</remarks>
+        public static byte[] GetBroadcastHash(string Address)
+        {
+            if (Address is null)
+            {
+                throw new ArgumentNullException(nameof(Address));
+            }
+            if (!Address.StartsWith(ADDR_PREFIX))
+            {
+                throw new FormatException($"Bitmessage addresses start with {ADDR_PREFIX}");
+            }
+            var Bytes = Base85.Decode(Address[ADDR_PREFIX.Length..]);
+            return Hashing.DoubleSha512(Bytes[..^4]);
+        }
+
+        public static ECKey GetBroadcastKey(string Address)
+        {
+            return new ECKey(GetBroadcastHash(Address)[..32]);
         }
 
         /// <summary>
@@ -300,14 +288,14 @@ namespace Bitmessage.Cryptography
         }
 
         /// <summary>
-        /// Creates an address information object from a public key
+        /// Creates an address information object from a serialized public key
         /// </summary>
         /// <param name="publicEncryptionKey">Public encryption key</param>
         /// <param name="publicSigningKey">Public signature key</param>
         /// <returns>Address info with only the public keys filled in</returns>
         /// <remarks>
         /// You need to call <see cref="ComputeEncodedAddress(ulong, ulong)"/>
-        /// to get the bitmessage address.
+        /// to get the bitmessage address after calling this function
         /// </remarks>
         public static AddressInfo FromPublicKeys(byte[] publicEncryptionKey, byte[] publicSigningKey)
         {
@@ -320,18 +308,18 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(publicSigningKey));
             }
-            if (publicEncryptionKey.Length != Secp256k1.PUBKEY_LENGTH)
+            if (publicEncryptionKey.Length != ECKey.PUBKEY_SERIALIZED_LENGTH && publicEncryptionKey.Length != ECKey.PUBKEY_COMPRESSED_LENGTH)
             {
-                throw new ArgumentException($"Key should be {Secp256k1.PUBKEY_LENGTH} bytes. Is it in serialized format?", nameof(publicEncryptionKey));
+                throw new ArgumentException($"Key should be {ECKey.PUBKEY_SERIALIZED_LENGTH} or {ECKey.PUBKEY_COMPRESSED_LENGTH} bytes. Is it not in serialized format?", nameof(publicEncryptionKey));
             }
-            if (publicSigningKey.Length != Secp256k1.PUBKEY_LENGTH)
+            if (publicSigningKey.Length != ECKey.PUBKEY_SERIALIZED_LENGTH && publicSigningKey.Length != ECKey.PUBKEY_COMPRESSED_LENGTH)
             {
-                throw new ArgumentException($"Key should be {Secp256k1.PUBKEY_LENGTH} bytes. Is it in serialized format?", nameof(publicSigningKey));
+                throw new ArgumentException($"Key should be {ECKey.PUBKEY_SERIALIZED_LENGTH} or {ECKey.PUBKEY_COMPRESSED_LENGTH} bytes. Is it not in serialized format?", nameof(publicSigningKey));
             }
             return new AddressInfo()
             {
-                PublicEncryptionKey = (byte[])publicEncryptionKey.Clone(),
-                PublicSigningKey = (byte[])publicEncryptionKey.Clone()
+                SigningKey = ECKey.FromPublic(publicSigningKey),
+                EncryptionKey = ECKey.FromPublic(publicEncryptionKey)
             };
         }
     }

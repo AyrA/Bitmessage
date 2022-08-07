@@ -1,121 +1,162 @@
-﻿using Bitmessage.Global;
-using Secp256k1Net;
+﻿using Org.BouncyCastle.Asn1.X9;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Math;
+using Org.BouncyCastle.Math.EC;
+using Org.BouncyCastle.Security;
 using System;
 using System.Linq;
 
 namespace Bitmessage.Cryptography
 {
     /// <summary>
-    /// Represents an EC keypair
+    /// Represents an EC key
     /// </summary>
     public class ECKey
     {
-        private readonly byte[] privateKey, publicKey, publicX, publicY, uncompressedPublicKey;
+        public const int PRIVKEY_LENGTH = 32;
+        public const int PUBKEY_LENGTH = 64;
+        public const int PUBKEY_SERIALIZED_LENGTH = PUBKEY_LENGTH + 1;
+        public const int PUBKEY_COMPRESSED_LENGTH = 33;
 
         /// <summary>
-        /// Gets the private key
+        /// The name of the curve that bitmessage uses
         /// </summary>
-        /// <remarks>This is null if a public key was supplied to the constructor</remarks>
-        public byte[] PrivateKey { get => privateKey == null ? null : (byte[])privateKey.Clone(); }
-
+        public const string CURVE = "secp256k1";
         /// <summary>
-        /// Gets the raw public key
+        /// BouncyCastle curve
         /// </summary>
-        public byte[] PublicKey { get => (byte[])publicKey.Clone(); }
-
+        private static readonly X9ECParameters curve = ECNamedCurveTable.GetByName(CURVE);
         /// <summary>
-        /// Gets the serialized, uncompressed public key
+        /// BouncyCastle curve parameters
         /// </summary>
-        public byte[] UncompressedPublicKey { get => (byte[])uncompressedPublicKey.Clone(); }
-
+        private static readonly ECDomainParameters domainParams = new ECDomainParameters(curve.Curve, curve.G, curve.N, curve.H, curve.GetSeed());
         /// <summary>
-        /// Gets the X component of the public key
+        /// BouncyCastle RNG
         /// </summary>
-        public byte[] PublicX { get => (byte[])publicX.Clone(); }
+        private static readonly SecureRandom rng = new SecureRandom();
 
         /// <summary>
-        /// Gets the Y component of the public key
+        /// Gets the private key.
+        /// This is null if the object was initialized with <see cref="FromPublic(byte[])"/>
+        /// or <see cref="ECKey(ECPoint)"/>
         /// </summary>
-        public byte[] PublicY { get => (byte[])publicY.Clone(); }
+        public ECPrivateKeyParameters PrivateKey { get; }
+        /// <summary>
+        /// Gets the public key
+        /// </summary>
+        public ECPublicKeyParameters PublicKey { get; }
 
         /// <summary>
-        /// Generates a new EC key pair
+        /// Creates a new random key
         /// </summary>
         public ECKey()
         {
-            using var generator = new Secp256k1();
-            publicKey = new byte[Secp256k1.PUBKEY_LENGTH];
-            uncompressedPublicKey = new byte[Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH];
-            var Output = new Span<byte>(publicKey);
-            Span<byte> Input;
-            do
-            {
-                privateKey = Tools.GetCryptoBytes(Secp256k1.PRIVKEY_LENGTH);
-                Input = new Span<byte>(privateKey);
-            } while (!generator.PublicKeyCreate(Output, Input));
-            generator.PublicKeySerialize(new Span<byte>(uncompressedPublicKey), Output);
-            publicX = publicKey[..(Secp256k1.PUBKEY_LENGTH / 2)];
-            publicY = publicKey[(Secp256k1.PUBKEY_LENGTH / 2)..];
+            var keyParams = new ECKeyGenerationParameters(domainParams, rng);
+            var generator = new ECKeyPairGenerator("ECDSA");
+            generator.Init(keyParams);
+            var keyPair = generator.GenerateKeyPair();
+            PrivateKey = keyPair.Private as ECPrivateKeyParameters;
+            PublicKey = keyPair.Public as ECPublicKeyParameters;
         }
 
         /// <summary>
-        /// Imports an existing EC key
+        /// Loads a private key and recreates the public key
         /// </summary>
-        /// <param name="existingKey">EC private key or public key</param>
-        /// <remarks>
-        /// Private key must be <see cref="Secp256k1.PRIVKEY_LENGTH"/> bytes.
-        /// Public key must be either <see cref="Secp256k1.PUBKEY_LENGTH"/>,
-        /// <see cref="Secp256k1.SERIALIZED_COMPRESSED_PUBKEY_LENGTH"/>, or
-        /// <see cref="Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH"/> bytes.
-        /// </remarks>
-        public ECKey(byte[] existingKey)
+        /// <param name="privateKey">Private key</param>
+        public ECKey(byte[] privateKey)
         {
-            if (existingKey is null)
+            if (privateKey is null)
             {
-                throw new ArgumentNullException(nameof(existingKey));
+                throw new ArgumentNullException(nameof(privateKey));
             }
-            using var generator = new Secp256k1();
-            if (existingKey.Length == Secp256k1.PRIVKEY_LENGTH)
-            {
-                privateKey = (byte[])existingKey.Clone();
-                publicKey = new byte[Secp256k1.PUBKEY_LENGTH];
-                var Input = new Span<byte>(privateKey);
-                var Output = new Span<byte>(publicKey);
-                if (!generator.PublicKeyCreate(Output, Input))
-                {
-                    throw new FormatException($"Input length ({Secp256k1.PRIVKEY_LENGTH}) suggests a private key but it's not valid");
-                }
-            }
-            else if (existingKey.Length == Secp256k1.PUBKEY_LENGTH)
-            {
-                publicKey = (byte[])existingKey.Clone();
-            }
-            else if (existingKey.Length == Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH)
-            {
-                if (!generator.PublicKeyParse(new Span<byte>(publicKey), new Span<byte>(existingKey)))
-                {
-                    throw new FormatException($"Input length ({Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH}) suggests a serialized public key but it's not valid");
-                }
-            }
-            else if (existingKey.Length == Secp256k1.SERIALIZED_COMPRESSED_PUBKEY_LENGTH)
-            {
-                if (!generator.PublicKeyParse(new Span<byte>(publicKey), new Span<byte>(existingKey)))
-                {
-                    throw new FormatException($"Input length ({Secp256k1.SERIALIZED_COMPRESSED_PUBKEY_LENGTH}) suggests a serialized compressed public key but it's not valid");
-                }
-            }
-            if (publicKey != null)
-            {
-                uncompressedPublicKey = new byte[Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH];
-                generator.PublicKeySerialize(new Span<byte>(uncompressedPublicKey), new Span<byte>(publicKey));
-                publicX = publicKey[..(Secp256k1.PUBKEY_LENGTH / 2)];
-                publicY = publicKey[(Secp256k1.PUBKEY_LENGTH / 2)..];
-            }
+
+            var Private = domainParams.ValidatePrivateScalar(new BigInteger(1, privateKey));
+            var Public = domainParams.ValidatePublicPoint(curve.G.Multiply(Private));
+            Public = Public.Normalize();
+            PrivateKey = new ECPrivateKeyParameters(Private, domainParams);
+            PublicKey = new ECPublicKeyParameters(Public, domainParams);
         }
 
-        public ECKey(byte[] publicX, byte[] publicY) : this(publicX.Concat(publicY).ToArray())
+        /// <summary>
+        /// Creates a new instance with a public key only
+        /// </summary>
+        /// <param name="publicPoint"></param>
+        public ECKey(ECPoint publicPoint)
         {
-            //NOOP
+            if (publicPoint is null)
+            {
+                throw new ArgumentNullException(nameof(publicPoint));
+            }
+
+            PublicKey = new ECPublicKeyParameters(domainParams.ValidatePublicPoint(publicPoint), domainParams);
+        }
+
+        /// <summary>
+        /// Serializes the private key into a storable format
+        /// </summary>
+        /// <returns>Private key</returns>
+        public byte[] SerializePrivate()
+        {
+            return PrivateKey.D.ToByteArrayUnsigned();
+        }
+
+        /// <summary>
+        /// Serializes the public key and optionally compresses it
+        /// </summary>
+        /// <param name="compress">Compression</param>
+        /// <returns>Serialized public key</returns>
+        /// <remarks>
+        /// A serialized key starts with 0x04 if uncompressed (65 bytes, contains X and Y),
+        /// or 0x02 or 0x03 if compressed (33 bytes, contains X only).
+        /// The Y component can be recreated because Y² = X³ + 7.
+        /// The 2 or 3 decides whether Y is even (2) or odd (3).
+        /// </remarks>
+        public byte[] SerializePublic(bool compress)
+        {
+            return PublicKey.Q.GetEncoded(compress);
+        }
+
+        public byte[] GetRawPublic()
+        {
+            return SerializePublic(false)[1..];
+        }
+
+        /// <summary>
+        /// Does a point multiplication with the current public key
+        /// in the way bitmessage wants it
+        /// </summary>
+        /// <param name="Private">Private key</param>
+        /// <returns>Multiplied point</returns>
+        /// <remarks>
+        /// Bitmessage doesn't uses the intend mechanism (ecdh) for this for some reason
+        /// </remarks>
+        public ECPoint Multiply(ECKey Private)
+        {
+            if (Private is null)
+            {
+                throw new ArgumentNullException(nameof(Private));
+            }
+
+            return PublicKey.Q.Multiply(Private.PrivateKey.D).Normalize();
+        }
+
+        /// <summary>
+        /// Initializes a new instance from a serialized public key
+        /// </summary>
+        /// <param name="EncodedPublicKey">Serialized public key</param>
+        /// <returns>New instance</returns>
+        /// <remarks>
+        /// Use the constructor if you want to use a private key (32 bytes)
+        /// </remarks>
+        public static ECKey FromPublic(byte[] EncodedPublicKey)
+        {
+            if (EncodedPublicKey is null)
+            {
+                throw new ArgumentNullException(nameof(EncodedPublicKey));
+            }
+
+            return new ECKey(curve.Curve.DecodePoint(EncodedPublicKey));
         }
     }
 }

@@ -1,6 +1,4 @@
 ﻿using Bitmessage.Global;
-using DevHawk.Security.Cryptography;
-using Secp256k1Net;
 using System;
 using System.Diagnostics;
 using System.Linq;
@@ -37,37 +35,18 @@ namespace Bitmessage.Cryptography
             var nullByteCount = shortAddress ? 2 : 1;
             ulong sigKeyNonce = 0;
             ulong encKeyNonce = 1;
-            using var generator = new Secp256k1();
-            using var ripe = new RIPEMD160();
-
-            //Combined key structure. Signing key first, then encryption key.
-            //This avoids an unnecessary concatenation for hashing.
-            byte[] combinedKey = new byte[Secp256k1.PUBKEY_LENGTH * 2];
-            var pubSign = new Span<byte>(combinedKey, 0, Secp256k1.PUBKEY_LENGTH);
-            var pubEnc = new Span<byte>(combinedKey, Secp256k1.PUBKEY_LENGTH, Secp256k1.PUBKEY_LENGTH);
-            //Same as previous, but for serialized key data
-            var serializedKeys = new byte[Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH * 2];
-            var serializedSign = new Span<byte>(serializedKeys, 0, Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH);
-            var serializedEnc = new Span<byte>(serializedKeys, Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH, Secp256k1.SERIALIZED_UNCOMPRESSED_PUBKEY_LENGTH);
-
             AddressInfo AI = null;
             do
             {
-                var privSign = new Span<byte>(Tools.Sha512(baseKey.Concat(VarInt.EncodeVarInt(sigKeyNonce)).ToArray()), 0, 32);
-                var privEnc = new Span<byte>(Tools.Sha512(baseKey.Concat(VarInt.EncodeVarInt(encKeyNonce)).ToArray()), 0, 32);
+                var privSign = new ECKey(Hashing.Sha512(baseKey.Concat(VarInt.EncodeVarInt(sigKeyNonce)).ToArray())[..32]);
+                var privEnc = new ECKey(Hashing.Sha512(baseKey.Concat(VarInt.EncodeVarInt(encKeyNonce)).ToArray())[..32]);
 
-                var ok =
-                    generator.PublicKeyCreate(pubEnc, privEnc) &&
-                    generator.PublicKeyCreate(pubSign, privSign) &&
-                    generator.PublicKeySerialize(serializedSign, pubSign) &&
-                    generator.PublicKeySerialize(serializedEnc, pubEnc);
-                if (ok)
+                var serializedKeys = privSign.SerializePublic(false).Concat(privSign.SerializePublic(false)).ToArray();
+
+                var ripeHash = Hashing.RIPEMD160(Hashing.Sha512(serializedKeys));
+                if (ripeHash.TakeWhile(m => m == 0).Count() >= nullByteCount)
                 {
-                    var ripeHash = ripe.ComputeHash(Tools.Sha512(serializedKeys));
-                    if (ripeHash.TakeWhile(m => m == 0).Count() == nullByteCount)
-                    {
-                        AI = new AddressInfo(privEnc.ToArray(), privSign.ToArray());
-                    }
+                    AI = new AddressInfo(privSign, privEnc);
                 }
                 sigKeyNonce += 2;
                 encKeyNonce += 2;
@@ -78,26 +57,20 @@ namespace Bitmessage.Cryptography
 
         private static AddressInfo CreateAddress(bool shortAddress)
         {
-            using var Hasher = new RIPEMD160();
-            using var ECDH = new Secp256k1();
-            var Info = new AddressInfo();
+            //To speed up the process we only re-generate one of the two keys.
+            var Key1 = new ECKey();
+            var Key2 = new ECKey();
+            var Public2 = Key2.SerializePublic(false);
             var StartSequence = new byte[shortAddress ? 2 : 1];
 
             Debug.Print("Generating encryption key with {0} leading nullbytes...", StartSequence.Length);
-            while (!Hasher.ComputeHash(Tools.Sha512(Info.PublicSigningKey.Concat(Info.PublicEncryptionKey).ToArray())).Take(StartSequence.Length).SequenceEqual(StartSequence))
+            while (!Hashing.RIPEMD160(Hashing.Sha512(Key1.SerializePublic(false).Concat(Public2).ToArray())).Take(StartSequence.Length).SequenceEqual(StartSequence))
             {
-                Info.CreateEncryptionKey(ECDH);
+                Key1 = new ECKey();
             }
-            /* NOTE: The hash limitation only applies to the encryption key
-            Debug.Print("Generating signing key...");
-            while (!Hasher.ComputeHash(Tools.Sha512(Info.PublicSigningKey)).Take(StartSequence.Length).SequenceEqual(StartSequence))
-            {
-                Info.CreateSigningKey(ECDH);
-            }
-            //*/
             Debug.Print("Keys generated");
 
-            return Info;
+            return new AddressInfo(Key1, Key2);
         }
     }
 }

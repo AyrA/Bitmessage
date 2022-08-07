@@ -1,7 +1,8 @@
-﻿using System;
+﻿using Bitmessage.Global;
+using System;
 using System.Linq;
 
-namespace Bitmessage.Global
+namespace Bitmessage.Cryptography
 {
 
     public static class POW
@@ -26,7 +27,7 @@ namespace Bitmessage.Global
         {
             var Nonce = Data.Take(8).ToArray();
             var PayloadToCheck = Data.Skip(8).ToArray();
-            var Hash = Tools.DoubleSha512(Nonce.Concat(Tools.Sha512(PayloadToCheck)).ToArray());
+            var Hash = Hashing.DoubleSha512(Nonce.Concat(Hashing.Sha512(PayloadToCheck)).ToArray());
             return Tools.ToUInt64(Hash);
         }
 

@@ -1,4 +1,5 @@
-﻿using Bitmessage.Global;
+﻿using Bitmessage.Cryptography;
+using Bitmessage.Global;
 using Bitmessage.Network;
 using Bitmessage.Network.Objects;
 using Bitmessage.Storage;
@@ -28,14 +29,16 @@ namespace Test
 
         static async Task Main()
         {
-            CheckNativeMethods();
-            TestAddress();
-            return;
-            LoadPeers();
             Print.Info("Loading storage");
             Storage = new IndexedStorage(DatabaseFile);
             Print.Info("Storage has {0} objects.", Storage.Count);
             CleanupStorage();
+            CheckNativeMethods();
+            //TestAddress();
+            //The timeservice sends a broadcast every 10 minutes
+            FindBroadcasts("BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash");
+            return;
+            LoadPeers();
             await GetPublicIP();
             Print.Info("Have {0} peers from last run", PeerList.KnownNodes.Count);
             Print.Info("Connecting...");
@@ -57,6 +60,60 @@ namespace Test
             Print.Info("Saving database...");
             Storage.TrimDatabase(NativeMethods.GetFreeMemory() > Storage.DatabaseSize * 2, true);
             Print.Info("Saved {0} objects", Storage.Count);
+        }
+
+        private static void FindBroadcasts(string Address)
+        {
+            byte[] Hash = AddressInfo.GetBroadcastHash(Address);
+            var AddrKey = Hash[..32];
+            var AddrTag = Hash[32..];
+            var Key = new ECKey(AddrKey);
+            foreach (var Entry in Storage.EnumerateAllContent())
+            {
+                var obj = MessageObject.FromData(Entry);
+                if (obj.ObjectType == MessageObjectType.Broadcast)
+                {
+                    byte[] ObjTag;
+                    if (obj.Version == 5)
+                    {
+                        ObjTag = obj.Payload.Take(32).ToArray();
+                    }
+                    else if (obj.Version == 4)
+                    {
+                        ObjTag = null;
+                    }
+                    else
+                    {
+                        Console.Write('?');
+                        continue;
+                    }
+                    if (ObjTag == null || NativeMethods.CompareBytes(AddrTag, ObjTag))
+                    {
+                        //Remove tag from payload if present
+                        var Payload = ObjTag == null ? obj.Payload : obj.Payload.Skip(ObjTag.Length).ToArray();
+
+                        //Try to decrypt
+                        try
+                        {
+                            var Result = MessageDecrypter.DecryptBroadcast(Payload, Key);
+                            Console.Write(Result == null ? 'X' : 'O');
+                            if (Result != null)
+                            {
+                                Dump(Result);
+                            }
+
+                        }
+                        catch
+                        {
+                            Console.Write('!');
+                        }
+                    }
+                    else
+                    {
+                        Console.Write('.');
+                    }
+                }
+            }
         }
 
         private static void TestAddress()
@@ -98,7 +155,7 @@ namespace Test
                 var Expiration = Tools.FromUnixTime(Tools.ToUInt64(Item, 8));
                 if (Expiration < PurgeCutoff)
                 {
-                    var Hash = Tools.DoubleSha512(Item).Take(IndexedStorage.INDEX_SIZE).ToArray();
+                    var Hash = Hashing.DoubleSha512(Item).Take(IndexedStorage.INDEX_SIZE).ToArray();
                     if (!Storage.DeleteData(Hash))
                     {
                         Print.Err("Failed to delete hash {0}", Convert.ToBase64String(Hash));
@@ -439,6 +496,36 @@ namespace Test
             else
             {
                 Print.Info("Requesting no hashes from remote");
+            }
+        }
+
+        public static void Dump(byte[] Data, params byte[] Highlight)
+        {
+            var BaseColor = Console.ForegroundColor;
+            if (Data is null || Data.Length == 0)
+            {
+                return;
+            }
+            Console.Error.WriteLine("Dumping {0} bytes", Data.Length);
+            for (var i = 0; i < Data.Length; i += 16)
+            {
+                var chars = "";
+                foreach (var B in Data.Skip(i).Take(16))
+                {
+                    //Only print lower ASCII without control characters
+                    if (B >= 0x20 && B < 0x7F)
+                    {
+                        chars += (char)B;
+                    }
+                    else
+                    {
+                        chars += '.';
+                    }
+                    Console.ForegroundColor = Highlight.Contains(B) ? ConsoleColor.Red : BaseColor;
+                    Console.Error.Write("{0:X2} ", B);
+                }
+                Console.ResetColor();
+                Console.Error.WriteLine("{1}\t{0}", chars, string.Empty.PadRight(3 * (16 - chars.Length)));
             }
         }
     }

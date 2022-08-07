@@ -11,9 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="DevHawk.RIPEMD160" Version="3.0.27" />
-    <PackageReference Include="Secp256k1.Native" Version="0.1.23" />
-    <PackageReference Include="Secp256k1.Net" Version="0.1.55" />
+    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,4 +1,5 @@
-﻿using Bitmessage.Global;
+﻿using Bitmessage.Cryptography;
+using Bitmessage.Global;
 using System;
 using System.IO;
 using System.Linq;
@@ -55,7 +56,7 @@ namespace Bitmessage.Network.Objects
             var CombinedData = new byte[8].Concat(BaseData).ToArray();
             var Target = Math.Floor(POW.GetTargetPOWValue(CombinedData, PayloadLengthExtraBytes, NonceTrialsPerByte));
             //Calculate real nonce below target
-            Nonce = POW.DoPOW(Tools.Sha512(BaseData), (ulong)Target);
+            Nonce = POW.DoPOW(Hashing.Sha512(BaseData), (ulong)Target);
         }
 
         public static MessageObject FromData(byte[] Data)

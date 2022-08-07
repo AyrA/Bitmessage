@@ -1,4 +1,5 @@
-﻿using Bitmessage.Global;
+﻿using Bitmessage.Cryptography;
+using Bitmessage.Global;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -390,7 +391,7 @@ namespace Bitmessage.Storage
             {
                 throw new ArgumentNullException(nameof(Data));
             }
-            var Hash = Tools.DoubleSha512(Data).Take(INDEX_SIZE).ToArray();
+            var Hash = Hashing.DoubleSha512(Data).Take(INDEX_SIZE).ToArray();
             lock (indices)
             {
                 var existing = indices.FirstOrDefault(m => m.CompareHash(Hash));
@@ -511,7 +512,7 @@ namespace Bitmessage.Storage
                 {
                     FileOffset = dbStream.Position
                 };
-                index.Hash = Tools.DoubleSha512(BR.ReadBytes(BR.ReadInt32())).Take(INDEX_SIZE).ToArray();
+                index.Hash = Hashing.DoubleSha512(BR.ReadBytes(BR.ReadInt32())).Take(INDEX_SIZE).ToArray();
                 indices.Add(index);
                 BW.Write(index.FileOffset);
                 BW.Write(index.Hash);

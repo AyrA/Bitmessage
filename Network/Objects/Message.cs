@@ -1,4 +1,5 @@
-﻿using Bitmessage.Global;
+﻿using Bitmessage.Cryptography;
+using Bitmessage.Global;
 using System;
 using System.IO;
 using System.Linq;
@@ -86,18 +87,17 @@ namespace Bitmessage.Network.Objects
 
         public bool VerifyChecksum()
         {
-            return Checksum.SequenceEqual(Tools.Sha512(Payload).Take(4));
+            return Checksum.SequenceEqual(Hashing.Sha512(Payload).Take(4));
         }
 
         public void CalculateChecksum()
         {
-            Checksum = Tools.Sha512(Payload).Take(4).ToArray();
-
+            Checksum = Hashing.Sha512(Payload).Take(4).ToArray();
         }
 
         public byte[] GetInvHash()
         {
-            return Tools.DoubleSha512(Payload).Take(32).ToArray();
+            return Hashing.DoubleSha512(Payload).Take(32).ToArray();
         }
 
         public void Deserialize(Stream Input)

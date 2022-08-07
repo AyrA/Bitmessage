@@ -36,70 +36,24 @@ namespace Bitmessage.Global
             return BitConverter.ToUInt32(Data, Offset);
         }
 
-        public static void Inc(byte[] Data)
+        /// <summary>
+        /// Increments an arbitrary long unsigned number that's stored in big endian format
+        /// </summary>
+        /// <param name="Data"></param>
+        /// <returns>true, if overflowed</returns>
+        public static bool Inc(byte[] Data)
         {
             int i = Data.Length - 1;
-            while (++Data[i] == 0 && --i > 0) ;
+            while (++Data[i] == 0 && --i < 0) ;
+            return i < 0 && Data[0] == 0;
         }
 
-        public static byte[] GetCryptoBytes(int Count)
+        public static byte[] GetSafeRandomBytes(int Count)
         {
             var Ret = new byte[Count];
             using var RNG = System.Security.Cryptography.RandomNumberGenerator.Create();
             RNG.GetBytes(Ret);
             return Ret;
-        }
-
-        public static byte[] Sha512(byte[] Data)
-        {
-            if (Data is null)
-            {
-                throw new ArgumentNullException(nameof(Data));
-            }
-
-            using var Hasher = System.Security.Cryptography.SHA512.Create();
-            return Hasher.ComputeHash(Data);
-        }
-
-        /// <summary>
-        /// This is faster than calling <see cref="Sha512(byte[])"/> twice
-        /// </summary>
-        /// <param name="Data"></param>
-        /// <returns></returns>
-        public static byte[] DoubleSha512(byte[] Data)
-        {
-            if (Data is null)
-            {
-                throw new ArgumentNullException(nameof(Data));
-            }
-            using var Hasher = System.Security.Cryptography.SHA512.Create();
-            return Hasher.ComputeHash(Hasher.ComputeHash(Data));
-        }
-
-        public static byte[] Sha256(byte[] Data)
-        {
-            if (Data is null)
-            {
-                throw new ArgumentNullException(nameof(Data));
-            }
-
-            using var Hasher = System.Security.Cryptography.SHA256.Create();
-            return Hasher.ComputeHash(Data);
-        }
-
-        /// <summary>
-        /// This is faster than calling <see cref="Sha256(byte[])"/> twice
-        /// </summary>
-        /// <param name="Data"></param>
-        /// <returns></returns>
-        public static byte[] DoubleSha256(byte[] Data)
-        {
-            if (Data is null)
-            {
-                throw new ArgumentNullException(nameof(Data));
-            }
-            using var Hasher = System.Security.Cryptography.SHA256.Create();
-            return Hasher.ComputeHash(Hasher.ComputeHash(Data));
         }
 
         public static DateTime FromUnixTime(ulong UnixTime)

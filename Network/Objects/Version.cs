@@ -27,7 +27,7 @@ namespace Bitmessage.Network.Objects
 
         public void GenerateNonce()
         {
-            Nonce = BitConverter.ToUInt64(Tools.GetCryptoBytes(8), 0);
+            Nonce = BitConverter.ToUInt64(Tools.GetSafeRandomBytes(8), 0);
         }
 
         public void Deserialize(Stream Input)
