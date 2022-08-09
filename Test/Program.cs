@@ -34,11 +34,13 @@ namespace Test
             CheckNativeMethods();
             //TestAddressGenerator();
 
-            //The timeservice sends a broadcast every 10 minutes,
-            //so there's plenty of messages to decrypt sucessfully.
-            foreach (var BC in EnumerateBroadcasts("BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash"))
+            var Addr = AddressGenerator.GenerateDeterministicAddress("general", false);
+
+            foreach (var BC in EnumerateMessages(Addr))
             {
-                Console.WriteLine("Found broadcast. Body length: {0} characters", BC.Message.Length);
+                Print.Debug("Found message. Body length: {0} characters", BC.Content.Length);
+                //This should in theory be our address
+                Print.Info(AddressInfo.GetAddress(BC.DestinationRipe, BC.AddressVersion, BC.StreamNumber));
             }
 
             /*
@@ -118,6 +120,34 @@ namespace Test
             }
         }
 
+        private static IEnumerable<Bitmessage.Global.Objects.Message> EnumerateMessages(AddressInfo Address)
+        {
+            foreach (var Entry in Storage.EnumerateAllContent())
+            {
+                var obj = MessageObject.FromData(Entry);
+                if (obj.ObjectType == MessageObjectType.Message)
+                {
+                    //Try to decrypt
+                    byte[] Result;
+                    try
+                    {
+                        Result = MessageDecrypter.DecryptMessage(obj.Payload, Address);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.Print($"Error: {ex.Message}");
+                        Console.Write('!');
+                        continue;
+                    }
+                    if (Result != null)
+                    {
+                        yield return new Bitmessage.Global.Objects.Message(Result);
+                    }
+
+                }
+            }
+        }
+
         private static void TestAddressGenerator()
         {
             Stopwatch SW = Stopwatch.StartNew();
@@ -129,7 +159,7 @@ namespace Test
             Print.Info("Version: {0}", TestAddress.AddressVersion);
             Print.Info("Stream : {0}", TestAddress.AddressStream);
             Print.Info("Time   : {0} ms", SW.ElapsedMilliseconds);
-            
+
             //Change stream and version number
             Print.Info("Changing address properties");
             TestAddress.ComputeEncodedAddress(20UL, 99UL);

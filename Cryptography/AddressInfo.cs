@@ -11,11 +11,6 @@ namespace Bitmessage.Cryptography
     public class AddressInfo
     {
         /// <summary>
-        /// The prefix for bitmessage addresses
-        /// </summary>
-        public const string ADDR_PREFIX = "BM-";
-
-        /// <summary>
         /// Private key used for signing
         /// </summary>
         public ECKey SigningKey { get; private set; }
@@ -107,17 +102,10 @@ namespace Bitmessage.Cryptography
             var CombinedKeys = SigningKey.SerializePublic(false)
                 .Concat(EncryptionKey.SerializePublic(false))
                 .ToArray();
-            var Hash = Hashing.RIPEMD160(Hashing.Sha512(CombinedKeys))
-                .SkipWhile(m => m == 0)
-                .ToArray();
-            var Data = VarInt.EncodeVarInt(version)
-                .Concat(VarInt.EncodeVarInt(stream))
-                .Concat(Hash)
-                .ToArray();
-            var Checksum = Hashing.DoubleSha512(Data)[..4];
+            EncodedAddress = GetAddress(Hashing.RIPEMD160(Hashing.Sha512(CombinedKeys)), version, stream);
             AddressVersion = version;
             AddressStream = stream;
-            return EncodedAddress = ADDR_PREFIX + Base85.Encode(Data.Concat(Checksum).ToArray());
+            return EncodedAddress;
         }
 
         /// <summary>
@@ -188,13 +176,13 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(ADDR_PREFIX))
+            if (!Address.StartsWith(Const.ADDR_PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
             }
             try
             {
-                var Bytes = Base85.Decode(Address[ADDR_PREFIX.Length..]);
+                var Bytes = Base85.Decode(Address[Const.ADDR_PREFIX.Length..]);
                 if (Bytes.Length < 5)
                 {
                     return false;
@@ -221,12 +209,12 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(ADDR_PREFIX))
+            if (!Address.StartsWith(Const.ADDR_PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
             }
             //Address data minus the checksum
-            var Bytes = Base85.Decode(Address[ADDR_PREFIX.Length..])[..^4];
+            var Bytes = Base85.Decode(Address[Const.ADDR_PREFIX.Length..])[..^4];
 
             //Annoyingly, the broadcast hash is generated from the full ripe hash,
             //not the truncated one that is actually part of the address string.
@@ -254,6 +242,20 @@ namespace Bitmessage.Cryptography
             return new ECKey(GetBroadcastHash(Address)[..32]);
         }
 
+        public static string GetAddress(byte[] ripe, ulong version, ulong stream)
+        {
+            if (ripe is null)
+            {
+                throw new ArgumentNullException(nameof(ripe));
+            }
+            var Data = VarInt.EncodeVarInt(version)
+                .Concat(VarInt.EncodeVarInt(stream))
+                .Concat(ripe.SkipWhile(m => m == 0))
+                .ToArray();
+            var Checksum = Hashing.DoubleSha512(Data)[..4];
+            return Const.ADDR_PREFIX + Base85.Encode(Data.Concat(Checksum).ToArray());
+        }
+
         /// <summary>
         /// Gets the version of an address
         /// </summary>
@@ -268,11 +270,11 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(ADDR_PREFIX))
+            if (!Address.StartsWith(Const.ADDR_PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
             }
-            var Bytes = Base85.Decode(Address[ADDR_PREFIX.Length..]);
+            var Bytes = Base85.Decode(Address[Const.ADDR_PREFIX.Length..]);
             return VarInt.DecodeVarInt(Bytes, 0);
         }
 
@@ -290,12 +292,12 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(ADDR_PREFIX))
+            if (!Address.StartsWith(Const.ADDR_PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
             }
             //Getting the second VarInt from the data is easier done with a stream
-            using var MS = new MemoryStream(Base85.Decode(Address[ADDR_PREFIX.Length..]), false);
+            using var MS = new MemoryStream(Base85.Decode(Address[Const.ADDR_PREFIX.Length..]), false);
             VarInt.DecodeVarInt(MS);
             return VarInt.DecodeVarInt(MS);
         }

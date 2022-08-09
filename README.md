@@ -64,17 +64,27 @@ I do believe it's "good enough" for Bitmessage.
 
 This is a console application that is used to test individual features and make them interact.
 
-In the current state it will:
+In the current state it can:
 
-- Connect to a single hardcoded node
-- Authenticate
+- Connect to a single hardcoded node and authenticate
 - Download all items it doesn't has already
 - Upload any item requested by the remote
 - Use Bitmessage.Storage to permanently store downloaded objects
+- Decrypt messages and broadcasts
+- Generate a deterministic address
 
-In other words, the test project is a fully functional relay.
+### ⚠️ CAUTION ⚠️
 
-It has no interactivity as of now.
+Being a test project, most of the features above are not actually functional
+when you pull the project from the repository.
+This application is used to test individual features as I develop them,
+but not all together at once (yet).
+You will find lots of disabled code that you need to enable
+if you want it do to everything.
+
+Also note that no care about security has yet been taken whatsoever.
+There currently isn't anything that gets impacted by this,
+but expect this to occasionally contain hardcoded private keys you should not use.
 
 # Available but unused in the Test project
 
@@ -86,7 +96,11 @@ This means you can implement your own cryptographic routines,
 and use the bitmessage network to merely transport your objects to other clients.
 
 Encrypted messages in bitmessage have no special format and are just binary data.
-Nothing stops you from sending unencrypted data over the network if you want to.
+Nothing stops you from sending unencrypted data over the network if you want to
+or use a custom format.
+
+Additionally, bitmessage clients are supposed to relay objects unknown to them.
+This means you can invent your own object types.
 
 # Native functions
 
@@ -133,7 +147,8 @@ so it can be added to the repository.
 
 - GPU accelerated POW function
 - Public key request handler
-- Encryption and decryption function
+- Encryption function (creating messages, etc)
+- Signature checks
 - TLS\*
 - UI
 
@@ -149,6 +164,8 @@ Because of this, TLS is fairly low on the priority list.
 - Persistent storage for objects and peers
 - POW function
 - Address generator (random and deterministic) and validator
+- Decrypt broadcasts ⚠️ No signature check yet ⚠️
+- Decrypt messages ⚠️ No signature check yet ⚠️
 
 \* "ping" and "pong" are not implemented, but they do not carry any data anyways.
 These two functions aren't even contained in the official documentation in the wiki,
