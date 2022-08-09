@@ -71,7 +71,7 @@ namespace Bitmessage.Network.Objects
 
         public void Deserialize(Stream Input, int RemainingBytes)
         {
-            if(RemainingBytes> MAX_OBJECT_SIZE)
+            if (RemainingBytes > MAX_OBJECT_SIZE)
             {
                 throw new InvalidDataException($"Object too big. It's {RemainingBytes} bytes but can be at most {MAX_OBJECT_SIZE} bytes");
             }
@@ -92,6 +92,7 @@ namespace Bitmessage.Network.Objects
             {
                 case MessageObjectType.GetPubkey:
                     Payload = BR.ReadBytes(RemainingBytes);
+                    RemainingBytes -= Payload.Length;
                     break;
                 case MessageObjectType.Pubkey:
                     if (Version < 3)
@@ -124,14 +125,19 @@ namespace Bitmessage.Network.Objects
                     break;
                 case MessageObjectType.Message:
                 case MessageObjectType.Broadcast:
-                default:
                     Payload = BR.ReadBytes(RemainingBytes);
+                    RemainingBytes -= Payload.Length;
+                    break;
+                default:
+                    System.Diagnostics.Debug.Print("Unrecognized object type: {0}", ObjectType);
+                    Payload = BR.ReadBytes(RemainingBytes);
+                    RemainingBytes -= Payload.Length;
                     break;
             }
-            if (RemainingBytes != Payload.Length)
+            if (RemainingBytes != 0)
             {
                 //TODO: Find a way to report this
-                System.Diagnostics.Debug.Print($"Payload size of {Payload.Length} does not match expected size of {RemainingBytes}");
+                System.Diagnostics.Debug.Print($"Payload size of {Payload.Length} does not match expected size and has {RemainingBytes} bytes remaining for object {ObjectType}");
             }
         }
 

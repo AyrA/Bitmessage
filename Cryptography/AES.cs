@@ -22,5 +22,20 @@ namespace Bitmessage.Cryptography
             CS.FlushFinalBlock();
             return MS.ToArray();
         }
+
+        public static byte[] Encrypt(byte[] Data, byte[] IV, byte[] Key)
+        {
+            var Algo = Aes.Create();
+            Algo.Key = Key;
+            Algo.IV = IV;
+            Algo.Mode = CipherMode.CBC;
+            Algo.Padding = PaddingMode.PKCS7;
+            using var Dec = Algo.CreateEncryptor();
+            using var MS = new MemoryStream();
+            using var CS = new CryptoStream(MS, Dec, CryptoStreamMode.Write);
+            CS.Write(Data, 0, Data.Length);
+            CS.FlushFinalBlock();
+            return MS.ToArray();
+        }
     }
 }

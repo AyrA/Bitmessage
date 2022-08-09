@@ -1,4 +1,6 @@
 ﻿using Org.BouncyCastle.Asn1.X9;
+using Org.BouncyCastle.Crypto.Agreement;
+using Org.BouncyCastle.Crypto.Agreement.Kdf;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
@@ -139,6 +141,20 @@ namespace Bitmessage.Cryptography
             }
 
             return PublicKey.Q.Multiply(Private.PrivateKey.D).Normalize();
+        }
+
+        public byte[] Ecdh(ECKey Private)
+        {
+            //For some reason, the result of this sometimes differs between us and PyBitmessage
+
+            //*
+            var agreement = new ECDHCBasicAgreement();
+            /*/
+            var ecGen = new ECDHKekGenerator(DigestUtilities.GetDigest("SHA256"));
+            var agreement = new ECDHWithKdfBasicAgreement(Org.BouncyCastle.Asn1.Nist.NistObjectIdentifiers.IdAes256Cbc.ToString(), ecGen);
+            //*/
+            agreement.Init(Private.PrivateKey);
+            return agreement.CalculateAgreement(PublicKey).ToByteArrayUnsigned();
         }
 
         /// <summary>

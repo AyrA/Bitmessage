@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Bitmessage.Global;
+using System;
 
 namespace Bitmessage.Cryptography
 {
@@ -63,6 +64,46 @@ namespace Bitmessage.Cryptography
             }
             using var Hasher = System.Security.Cryptography.SHA256.Create();
             return Hasher.ComputeHash(Hasher.ComputeHash(Data));
+        }
+
+        public static byte[] HmacSha256(byte[] Salt, byte[] Data)
+        {
+            if (Salt is null)
+            {
+                throw new ArgumentNullException(nameof(Salt));
+            }
+
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+
+            using var Hasher = new System.Security.Cryptography.HMACSHA256(Salt);
+            return Hasher.ComputeHash(Data);
+        }
+
+        public static bool ValidateMac(byte[] Mac, byte[] Salt, byte[] Data)
+        {
+            if (Mac is null)
+            {
+                throw new ArgumentNullException(nameof(Mac));
+            }
+
+            if (Salt is null)
+            {
+                throw new ArgumentNullException(nameof(Salt));
+            }
+
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+
+            return Mac.Length switch
+            {
+                32 => NativeMethods.CompareBytes(Mac, HmacSha256(Salt, Data)),
+                _ => false,
+            };
         }
     }
 }

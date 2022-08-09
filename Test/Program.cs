@@ -5,6 +5,7 @@ using Bitmessage.Network.Objects;
 using Bitmessage.Storage;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -14,9 +15,6 @@ namespace Test
 {
     public class Program
     {
-        //INFO: Outdated
-        //private static readonly List<byte[]> PendingInv = new List<byte[]>();
-
         private static readonly Peers PeerList = new Peers();
 
         private static readonly string PeerFile = @"C:\Temp\Bitmessage.Peers.dat";
@@ -32,17 +30,23 @@ namespace Test
             Print.Info("Loading storage");
             Storage = new IndexedStorage(DatabaseFile);
             Print.Info("Storage has {0} objects.", Storage.Count);
-            CleanupStorage();
+            //CleanupStorage();
             CheckNativeMethods();
-            //TestAddress();
-            //The timeservice sends a broadcast every 10 minutes
-            FindBroadcasts("BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash");
-            return;
+            //TestAddressGenerator();
+
+            //The timeservice sends a broadcast every 10 minutes,
+            //so there's plenty of messages to decrypt sucessfully.
+            foreach (var BC in EnumerateBroadcasts("BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash"))
+            {
+                Console.WriteLine("Found broadcast. Body length: {0} characters", BC.Message.Length);
+            }
+
+            /*
             LoadPeers();
             await GetPublicIP();
             Print.Info("Have {0} peers from last run", PeerList.KnownNodes.Count);
             Print.Info("Connecting...");
-            using var Connection = await Connecter.ConnectAsync("bootflix.stream", 8448);
+            using var Connection = await Connecter.ConnectAsync("ovh.ayra.ch", 8448);
             Print.Info("Connected to {0}", Connection.RemoteEndpoint);
             Connection.NewMessage += Connection_NewMessage;
             Connection.NetworkError += Connection_NetworkError;
@@ -60,13 +64,14 @@ namespace Test
             Print.Info("Saving database...");
             Storage.TrimDatabase(NativeMethods.GetFreeMemory() > Storage.DatabaseSize * 2, true);
             Print.Info("Saved {0} objects", Storage.Count);
+            //*/
         }
 
-        private static void FindBroadcasts(string Address)
+        private static IEnumerable<Bitmessage.Global.Objects.Broadcast> EnumerateBroadcasts(string Address)
         {
             byte[] Hash = AddressInfo.GetBroadcastHash(Address);
-            var AddrKey = Hash[..32];
-            var AddrTag = Hash[32..];
+            var AddrKey = Hash[..ECKey.PRIVKEY_LENGTH];
+            var AddrTag = Hash[ECKey.PRIVKEY_LENGTH..];
             var Key = new ECKey(AddrKey);
             foreach (var Entry in Storage.EnumerateAllContent())
             {
@@ -76,7 +81,7 @@ namespace Test
                     byte[] ObjTag;
                     if (obj.Version == 5)
                     {
-                        ObjTag = obj.Payload.Take(32).ToArray();
+                        ObjTag = obj.Payload[..32];
                     }
                     else if (obj.Version == 4)
                     {
@@ -90,58 +95,59 @@ namespace Test
                     if (ObjTag == null || NativeMethods.CompareBytes(AddrTag, ObjTag))
                     {
                         //Remove tag from payload if present
-                        var Payload = ObjTag == null ? obj.Payload : obj.Payload.Skip(ObjTag.Length).ToArray();
+                        var Payload = ObjTag == null ? obj.Payload : obj.Payload[ObjTag.Length..];
 
                         //Try to decrypt
+                        byte[] Result;
                         try
                         {
-                            var Result = MessageDecrypter.DecryptBroadcast(Payload, Key);
-                            Console.Write(Result == null ? 'X' : 'O');
-                            if (Result != null)
-                            {
-                                Dump(Result);
-                            }
-
+                            Result = MessageDecrypter.DecryptBroadcast(Payload, Key);
                         }
-                        catch
+                        catch (Exception ex)
                         {
+                            Debug.Print($"Error: {ex.Message}");
                             Console.Write('!');
+                            continue;
                         }
-                    }
-                    else
-                    {
-                        Console.Write('.');
+                        if (Result != null)
+                        {
+                            yield return new Bitmessage.Global.Objects.Broadcast(Result);
+                        }
                     }
                 }
             }
         }
 
-        private static void TestAddress()
+        private static void TestAddressGenerator()
         {
-            /*
+            Stopwatch SW = Stopwatch.StartNew();
             //Random address
             Print.Info("Creating a test address...");
-            var TestAddress = Bitmessage.Cryptography.AddressGenerator.GenerateRandomAddress(false, 1, 3);
+            var TestAddress = AddressGenerator.GenerateRandomAddress(false, 1, 3);
             Print.Info("Address: {0}", TestAddress.EncodedAddress);
-            Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
+            Print.Info("Valid  : {0}", AddressInfo.CheckAddress(TestAddress.EncodedAddress));
             Print.Info("Version: {0}", TestAddress.AddressVersion);
             Print.Info("Stream : {0}", TestAddress.AddressStream);
+            Print.Info("Time   : {0} ms", SW.ElapsedMilliseconds);
+            
             //Change stream and version number
             Print.Info("Changing address properties");
             TestAddress.ComputeEncodedAddress(20UL, 99UL);
             Print.Info("Address: {0}", TestAddress.EncodedAddress);
-            Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
+            Print.Info("Valid  : {0}", AddressInfo.CheckAddress(TestAddress.EncodedAddress));
             Print.Info("Version: {0}", TestAddress.AddressVersion);
             Print.Info("Stream : {0}", TestAddress.AddressStream);
-            Print.Info(Convert.ToBase64String(TestAddress.PublicSigningKey));
+            Print.Info(Convert.ToBase64String(TestAddress.SigningKey.SerializePublic(true)));
             //*/
 
+            SW.Restart();
             //Deterministic address
-            var TestAddress = Bitmessage.Cryptography.AddressGenerator.GenerateDeterministicAddress("general", false, 1, 4);
+            TestAddress = AddressGenerator.GenerateDeterministicAddress("general", false, 1, 4);
             Print.Info("Address: {0}", TestAddress.EncodedAddress);
-            Print.Info("Valid  : {0}", Bitmessage.Cryptography.AddressInfo.CheckAddress(TestAddress.EncodedAddress));
+            Print.Info("Valid  : {0}", AddressInfo.CheckAddress(TestAddress.EncodedAddress));
             Print.Info("Version: {0}", TestAddress.AddressVersion);
             Print.Info("Stream : {0}", TestAddress.AddressStream);
+            Print.Info("Time   : {0} ms", SW.ElapsedMilliseconds);
             //Check if the address is identical to the address generated via PyBitmessage
             Print.Info("Compare: {0}", TestAddress.EncodedAddress == "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r");
         }
@@ -260,37 +266,6 @@ namespace Test
             }
             return false;
         }
-
-        //INFO: Outdated
-        /*
-        private static bool AddHash(byte[] Hash)
-        {
-            lock (PendingInv)
-            {
-                if (!PendingInv.Any(m => NativeMethods.CompareBytes(m, Hash)))
-                {
-                    PendingInv.Add(Hash);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static void AddHashes(IEnumerable<byte[]> enumerable)
-        {
-            lock (PendingInv)
-            {
-                //Combine the lists and filter
-                var Items = PendingInv
-                    .Concat(enumerable)
-                    .Distinct(new ByteArrayComparer(true))
-                    .ToList();
-                //Store result
-                PendingInv.Clear();
-                PendingInv.AddRange(Items);
-            }
-        }
-        //*/
 
         private static void Connection_NetworkError(NetworkHandler sender, Exception obj)
         {

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Bitmessage.Global
@@ -64,6 +65,15 @@ namespace Bitmessage.Global
         public static ulong ToUnixTime(DateTime DT)
         {
             return (ulong)DT.ToUniversalTime().Subtract(Epoch).TotalSeconds;
+        }
+
+        public static string Hexlify(IEnumerable<byte> data, string Separator = ":")
+        {
+            if (data is null)
+            {
+                return null;
+            }
+            return string.Join(Separator, data.Select(m => m.ToString("X2")));
         }
     }
 }

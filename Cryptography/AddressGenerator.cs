@@ -36,22 +36,24 @@ namespace Bitmessage.Cryptography
             ulong sigKeyNonce = 0;
             ulong encKeyNonce = 1;
             AddressInfo AI = null;
+            //Reusing the same hashing component is better than doing Hashing.Sha512(...) repeatedly
+            using var SHA512 = System.Security.Cryptography.SHA512.Create();
             do
             {
-                var privSign = new ECKey(Hashing.Sha512(baseKey.Concat(VarInt.EncodeVarInt(sigKeyNonce)).ToArray())[..32]);
-                var privEnc = new ECKey(Hashing.Sha512(baseKey.Concat(VarInt.EncodeVarInt(encKeyNonce)).ToArray())[..32]);
+                var privSign = new ECKey(SHA512.ComputeHash(baseKey.Concat(VarInt.EncodeVarInt(sigKeyNonce)).ToArray())[..32]);
+                var privEnc = new ECKey(SHA512.ComputeHash(baseKey.Concat(VarInt.EncodeVarInt(encKeyNonce)).ToArray())[..32]);
 
-                var serializedKeys = privSign.SerializePublic(false).Concat(privSign.SerializePublic(false)).ToArray();
+                var serializedKeys = privSign.SerializePublic(false).Concat(privEnc.SerializePublic(false)).ToArray();
 
-                var ripeHash = Hashing.RIPEMD160(Hashing.Sha512(serializedKeys));
-                if (ripeHash.TakeWhile(m => m == 0).Count() >= nullByteCount)
+                var ripeHash = Hashing.RIPEMD160(SHA512.ComputeHash(serializedKeys));
+                if (ripeHash[..nullByteCount].All(m => m == 0))
                 {
                     AI = new AddressInfo(privSign, privEnc);
                 }
                 sigKeyNonce += 2;
                 encKeyNonce += 2;
             } while (AI == null);
-            Debug.Print("Key generator completed after {0} iterations", sigKeyNonce / 2);
+            Debug.Print("Deterministic key generator completed after {0} iterations", sigKeyNonce / 2);
             return AI;
         }
 
@@ -62,13 +64,14 @@ namespace Bitmessage.Cryptography
             var Key2 = new ECKey();
             var Public2 = Key2.SerializePublic(false);
             var StartSequence = new byte[shortAddress ? 2 : 1];
-
+            int iterartions = 0;
             Debug.Print("Generating encryption key with {0} leading nullbytes...", StartSequence.Length);
             while (!Hashing.RIPEMD160(Hashing.Sha512(Key1.SerializePublic(false).Concat(Public2).ToArray())).Take(StartSequence.Length).SequenceEqual(StartSequence))
             {
                 Key1 = new ECKey();
+                ++iterartions;
             }
-            Debug.Print("Keys generated");
+            Debug.Print("Random key generator completed after {0} iterations", iterartions);
 
             return new AddressInfo(Key1, Key2);
         }

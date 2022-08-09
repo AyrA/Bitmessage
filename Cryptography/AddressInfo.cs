@@ -104,27 +104,20 @@ namespace Bitmessage.Cryptography
         /// </remarks>
         public string ComputeEncodedAddress(ulong version, ulong stream)
         {
-            var CombinedKeys = SigningKey.GetRawPublic()
-                .Concat(EncryptionKey.GetRawPublic())
+            var CombinedKeys = SigningKey.SerializePublic(false)
+                .Concat(EncryptionKey.SerializePublic(false))
                 .ToArray();
-            //using var generator = new Secp256k1();
-            var Hash = Hashing.Sha512(CombinedKeys);
-            var ripe = new Org.BouncyCastle.Crypto.Digests.RipeMD160Digest();
-            ripe.BlockUpdate(Hash, 0, Hash.Length);
-            ripe.DoFinal(Hash, 0);
-            Hash = Hash
-                .Take(ripe.GetDigestSize())
+            var Hash = Hashing.RIPEMD160(Hashing.Sha512(CombinedKeys))
                 .SkipWhile(m => m == 0)
                 .ToArray();
             var Data = VarInt.EncodeVarInt(version)
                 .Concat(VarInt.EncodeVarInt(stream))
                 .Concat(Hash)
                 .ToArray();
-            var Checksum = Hashing.DoubleSha512(Data).Take(4);
-            Data = Data.Concat(Checksum).ToArray();
+            var Checksum = Hashing.DoubleSha512(Data)[..4];
             AddressVersion = version;
             AddressStream = stream;
-            return EncodedAddress = ADDR_PREFIX + Base85.Encode(Data);
+            return EncodedAddress = ADDR_PREFIX + Base85.Encode(Data.Concat(Checksum).ToArray());
         }
 
         /// <summary>
@@ -206,9 +199,9 @@ namespace Bitmessage.Cryptography
                 {
                     return false;
                 }
-                var Data = Bytes.SkipLast(4).ToArray();
-                var Checksum = Bytes.TakeLast(4);
-                return Hashing.DoubleSha512(Data).Take(4).SequenceEqual(Checksum);
+                var Data = Bytes[..^4];
+                var Checksum = Bytes[^4..];
+                return Hashing.DoubleSha512(Data)[..4].SequenceEqual(Checksum);
             }
             catch
             {
@@ -232,8 +225,28 @@ namespace Bitmessage.Cryptography
             {
                 throw new FormatException($"Bitmessage addresses start with {ADDR_PREFIX}");
             }
-            var Bytes = Base85.Decode(Address[ADDR_PREFIX.Length..]);
-            return Hashing.DoubleSha512(Bytes[..^4]);
+            //Address data minus the checksum
+            var Bytes = Base85.Decode(Address[ADDR_PREFIX.Length..])[..^4];
+
+            //Annoyingly, the broadcast hash is generated from the full ripe hash,
+            //not the truncated one that is actually part of the address string.
+            //This means we need to insert leading zeroes to extend it to 160 bits (20 bytes).
+            //This also means we need to decode and immediately re-encode
+            //the var_int someone was a huge fan of.
+            //This is not documented either. You're supposed to just magically know this.
+            //You can find how it's done by looking at "decodeAddress" in "addresses.py"
+            using var MS = new MemoryStream(Bytes, false);
+            using var BR = MS.GetReader();
+            var version = BR.ReadVarInt();
+            var OutBuffer = VarInt.EncodeVarInt(version) //Version
+                .Concat(VarInt.EncodeVarInt(BR.ReadVarInt())) //Stream
+                .Concat(new byte[20]) //Reserved space for ripemd160
+                .ToArray();
+            //All remaining data is the hash. Copy and preserve leading zeros
+            var Ripe = BR.ReadBytes((int)(MS.Length - MS.Position));
+            Ripe.CopyTo(OutBuffer, OutBuffer.Length - Ripe.Length);
+            //Do single hash only for old addresses
+            return version < 4 ? Hashing.Sha512(OutBuffer) : Hashing.DoubleSha512(OutBuffer);
         }
 
         public static ECKey GetBroadcastKey(string Address)
