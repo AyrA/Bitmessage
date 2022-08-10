@@ -14,6 +14,7 @@ namespace Bitmessage.Cryptography
         /// Private key used for signing
         /// </summary>
         public ECKey SigningKey { get; private set; }
+
         /// <summary>
         /// Private key used for encryption
         /// </summary>
@@ -35,6 +36,7 @@ namespace Bitmessage.Cryptography
         /// Use <see cref="ComputeEncodedAddress(ulong, ulong)"/> to change this value
         /// </remarks>
         public ulong AddressVersion { get; private set; }
+
         /// <summary>
         /// Gets the stream of <see cref="EncodedAddress"/>
         /// </summary>
@@ -42,6 +44,16 @@ namespace Bitmessage.Cryptography
         /// Use <see cref="ComputeEncodedAddress(ulong, ulong)"/> to change this value
         /// </remarks>
         public ulong AddressStream { get; private set; }
+
+        /// <summary>
+        /// Getsy or sets the address label
+        /// </summary>
+        public string Label { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the address is enabled
+        /// </summary>
+        public bool Enabled { get; set; }
 
         /// <summary>
         /// Creates a new instance
@@ -55,7 +67,7 @@ namespace Bitmessage.Cryptography
         {
             EncryptionKey = new ECKey();
             SigningKey = new ECKey();
-            ComputeEncodedAddress(AddressGenerator.DEFAULT_VERSION, AddressGenerator.DEFAULT_STREAM);
+            ComputeEncodedAddress();
         }
 
         public AddressInfo(byte[] privateSigningKey, byte[] privateEncryptionKey)
@@ -68,13 +80,13 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(privateEncryptionKey));
             }
-            if (privateSigningKey.Length != ECKey.PRIVKEY_LENGTH)
+            if (privateSigningKey.Length != Const.EC.PRIVKEY_LENGTH)
             {
-                throw new ArgumentException($"Key should be {ECKey.PRIVKEY_LENGTH} bytes", nameof(privateSigningKey));
+                throw new ArgumentException($"Key should be {Const.EC.PRIVKEY_LENGTH} bytes", nameof(privateSigningKey));
             }
-            if (privateEncryptionKey.Length != ECKey.PRIVKEY_LENGTH)
+            if (privateEncryptionKey.Length != Const.EC.PRIVKEY_LENGTH)
             {
-                throw new ArgumentException($"Key should be {ECKey.PRIVKEY_LENGTH} bytes", nameof(privateEncryptionKey));
+                throw new ArgumentException($"Key should be {Const.EC.PRIVKEY_LENGTH} bytes", nameof(privateEncryptionKey));
             }
 
             SigningKey = new ECKey(privateSigningKey);
@@ -92,12 +104,12 @@ namespace Bitmessage.Cryptography
         /// </summary>
         /// <param name="version">Address version</param>
         /// <param name="stream">Stream number</param>
-        /// <returns>Bitmessage address with <see cref="ADDR_PREFIX"/></returns>
+        /// <returns>Bitmessage address with <see cref="Const.Addr.PREFIX"/></returns>
         /// <remarks>
         /// An address once generated can be changed to any desired version and stream.
         /// This has no effect on the cryptographic keys.
         /// </remarks>
-        public string ComputeEncodedAddress(ulong version, ulong stream)
+        public string ComputeEncodedAddress(ulong version = Const.Addr.DEFAULT_VERSION, ulong stream= Const.Addr.DEFAULT_STREAM)
         {
             var CombinedKeys = SigningKey.SerializePublic(false)
                 .Concat(EncryptionKey.SerializePublic(false))
@@ -114,19 +126,22 @@ namespace Bitmessage.Cryptography
         /// <param name="Output">Stream</param>
         public void Serialize(Stream Output)
         {
+            if (Output is null)
+            {
+                throw new ArgumentNullException(nameof(Output));
+            }
+
             if (EncryptionKey is null || SigningKey is null)
             {
                 throw new InvalidOperationException("Cannot serialize an incomplete address");
             }
-            var pSig = SigningKey.SerializePrivate();
-            var pEnc = EncryptionKey.SerializePrivate();
+            SigningKey.Serialize(Output);
+            EncryptionKey.Serialize(Output);
             using var BW = Output.GetNativeWriter();
-            BW.Write(pSig.Length);
-            BW.Write(pSig);
-            BW.Write(pEnc.Length);
-            BW.Write(pEnc);
             BW.Write(AddressVersion);
             BW.Write(AddressStream);
+            BW.Write(Enabled);
+            BW.Write(Label ?? "");
         }
 
         /// <summary>
@@ -135,14 +150,25 @@ namespace Bitmessage.Cryptography
         /// <param name="Input">Stream</param>
         public void Deserialize(Stream Input)
         {
+            if (Input is null)
+            {
+                throw new ArgumentNullException(nameof(Input));
+            }
+
+            SigningKey = ECKey.Deserialize(Input);
+            EncryptionKey = ECKey.Deserialize(Input);
             using var BR = Input.GetNativeReader();
-            SigningKey = new ECKey(BR.ReadBytes(BR.ReadInt32()));
-            EncryptionKey = new ECKey(BR.ReadBytes(BR.ReadInt32()));
             AddressVersion = BR.ReadUInt64();
             AddressStream = BR.ReadUInt64();
+            Enabled = BR.ReadBoolean();
+            Label = BR.ReadString();
             ComputeEncodedAddress(AddressVersion, AddressStream);
         }
 
+        /// <summary>
+        /// Gets the hash that is used for decrypting broadcasts and verify the hmac
+        /// </summary>
+        /// <returns>SHA512</returns>
         public byte[] GetBroadcastHash()
         {
             if (string.IsNullOrEmpty(EncodedAddress))
@@ -152,6 +178,11 @@ namespace Bitmessage.Cryptography
             return GetBroadcastHash(EncodedAddress);
         }
 
+        /// <summary>
+        /// Gets the EC key used for encrypting broadcasts.
+        /// To also get the hmac key use <see cref="GetBroadcastHash"/>
+        /// </summary>
+        /// <returns>Broadcast EC key</returns>
         public ECKey GetBroadcastKey()
         {
             if (string.IsNullOrEmpty(EncodedAddress))
@@ -167,7 +198,7 @@ namespace Bitmessage.Cryptography
         /// <param name="Address">Bitmessage address</param>
         /// <returns>true, if valid</returns>
         /// <remarks>
-        /// Valid means it has to start with <see cref="ADDR_PREFIX"/>
+        /// Valid means it has to start with <see cref="Const.Addr.PREFIX"/>
         /// and the checksum (last 4 bytes) has to match.
         /// </remarks>
         public static bool CheckAddress(string Address)
@@ -176,13 +207,13 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(Const.ADDR_PREFIX))
+            if (!Address.StartsWith(Const.Addr.PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.Addr.PREFIX}");
             }
             try
             {
-                var Bytes = Base85.Decode(Address[Const.ADDR_PREFIX.Length..]);
+                var Bytes = Base85.Decode(Address[Const.Addr.PREFIX.Length..]);
                 if (Bytes.Length < 5)
                 {
                     return false;
@@ -209,12 +240,12 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(Const.ADDR_PREFIX))
+            if (!Address.StartsWith(Const.Addr.PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.Addr.PREFIX}");
             }
             //Address data minus the checksum
-            var Bytes = Base85.Decode(Address[Const.ADDR_PREFIX.Length..])[..^4];
+            var Bytes = Base85.Decode(Address[Const.Addr.PREFIX.Length..])[..^4];
 
             //Annoyingly, the broadcast hash is generated from the full ripe hash,
             //not the truncated one that is actually part of the address string.
@@ -237,12 +268,25 @@ namespace Bitmessage.Cryptography
             return version < 4 ? Hashing.Sha512(OutBuffer) : Hashing.DoubleSha512(OutBuffer);
         }
 
+        /// <summary>
+        /// Gets the EC key used for encrypting broadcasts.
+        /// To also get the hmac key use <see cref="GetBroadcastHash(string)"/>
+        /// </summary>
+        /// <param name="Address">Bitmessage address</param>
+        /// <returns>Broadcast EC key</returns>
         public static ECKey GetBroadcastKey(string Address)
         {
             return new ECKey(GetBroadcastHash(Address)[..32]);
         }
 
-        public static string GetAddress(byte[] ripe, ulong version, ulong stream)
+        /// <summary>
+        /// Gets the bitmessage address from the given information
+        /// </summary>
+        /// <param name="ripe">ripe hash (truncated or not)</param>
+        /// <param name="version">Address version</param>
+        /// <param name="stream">Stream number</param>
+        /// <returns>Bitmessage address</returns>
+        public static string GetAddress(byte[] ripe, ulong version = Const.Addr.DEFAULT_VERSION, ulong stream = Const.Addr.DEFAULT_STREAM)
         {
             if (ripe is null)
             {
@@ -253,7 +297,7 @@ namespace Bitmessage.Cryptography
                 .Concat(ripe.SkipWhile(m => m == 0))
                 .ToArray();
             var Checksum = Hashing.DoubleSha512(Data)[..4];
-            return Const.ADDR_PREFIX + Base85.Encode(Data.Concat(Checksum).ToArray());
+            return Const.Addr.PREFIX + Base85.Encode(Data.Concat(Checksum).ToArray());
         }
 
         /// <summary>
@@ -270,11 +314,11 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(Const.ADDR_PREFIX))
+            if (!Address.StartsWith(Const.Addr.PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.Addr.PREFIX}");
             }
-            var Bytes = Base85.Decode(Address[Const.ADDR_PREFIX.Length..]);
+            var Bytes = Base85.Decode(Address[Const.Addr.PREFIX.Length..]);
             return VarInt.DecodeVarInt(Bytes, 0);
         }
 
@@ -292,12 +336,12 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(Address));
             }
-            if (!Address.StartsWith(Const.ADDR_PREFIX))
+            if (!Address.StartsWith(Const.Addr.PREFIX))
             {
-                throw new FormatException($"Bitmessage addresses start with {Const.ADDR_PREFIX}");
+                throw new FormatException($"Bitmessage addresses start with {Const.Addr.PREFIX}");
             }
             //Getting the second VarInt from the data is easier done with a stream
-            using var MS = new MemoryStream(Base85.Decode(Address[Const.ADDR_PREFIX.Length..]), false);
+            using var MS = new MemoryStream(Base85.Decode(Address[Const.Addr.PREFIX.Length..]), false);
             VarInt.DecodeVarInt(MS);
             return VarInt.DecodeVarInt(MS);
         }
@@ -323,13 +367,13 @@ namespace Bitmessage.Cryptography
             {
                 throw new ArgumentNullException(nameof(publicSigningKey));
             }
-            if (publicEncryptionKey.Length != ECKey.PUBKEY_SERIALIZED_LENGTH && publicEncryptionKey.Length != ECKey.PUBKEY_COMPRESSED_LENGTH)
+            if (publicEncryptionKey.Length != Const.EC.PUBKEY_SERIALIZED_LENGTH && publicEncryptionKey.Length != Const.EC.PUBKEY_COMPRESSED_LENGTH)
             {
-                throw new ArgumentException($"Key should be {ECKey.PUBKEY_SERIALIZED_LENGTH} or {ECKey.PUBKEY_COMPRESSED_LENGTH} bytes. Is it not in serialized format?", nameof(publicEncryptionKey));
+                throw new ArgumentException($"Key should be {Const.EC.PUBKEY_SERIALIZED_LENGTH} or {Const.EC.PUBKEY_COMPRESSED_LENGTH} bytes. Is it not in serialized format?", nameof(publicEncryptionKey));
             }
-            if (publicSigningKey.Length != ECKey.PUBKEY_SERIALIZED_LENGTH && publicSigningKey.Length != ECKey.PUBKEY_COMPRESSED_LENGTH)
+            if (publicSigningKey.Length != Const.EC.PUBKEY_SERIALIZED_LENGTH && publicSigningKey.Length != Const.EC.PUBKEY_COMPRESSED_LENGTH)
             {
-                throw new ArgumentException($"Key should be {ECKey.PUBKEY_SERIALIZED_LENGTH} or {ECKey.PUBKEY_COMPRESSED_LENGTH} bytes. Is it not in serialized format?", nameof(publicSigningKey));
+                throw new ArgumentException($"Key should be {Const.EC.PUBKEY_SERIALIZED_LENGTH} or {Const.EC.PUBKEY_COMPRESSED_LENGTH} bytes. Is it not in serialized format?", nameof(publicSigningKey));
             }
             return new AddressInfo()
             {

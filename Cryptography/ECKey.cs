@@ -1,4 +1,5 @@
-﻿using Org.BouncyCastle.Asn1.X9;
+﻿using Bitmessage.Global;
+using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.Agreement;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -6,6 +7,7 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Math.EC;
 using Org.BouncyCastle.Security;
 using System;
+using System.IO;
 
 namespace Bitmessage.Cryptography
 {
@@ -14,19 +16,10 @@ namespace Bitmessage.Cryptography
     /// </summary>
     public class ECKey
     {
-        public const int PRIVKEY_LENGTH = 32;
-        public const int PUBKEY_LENGTH = 64;
-        public const int PUBKEY_SERIALIZED_LENGTH = PUBKEY_LENGTH + 1;
-        public const int PUBKEY_COMPRESSED_LENGTH = 33;
-
-        /// <summary>
-        /// The name of the curve that bitmessage uses
-        /// </summary>
-        public const string CURVE = "secp256k1";
         /// <summary>
         /// BouncyCastle curve
         /// </summary>
-        private static readonly X9ECParameters curve = ECNamedCurveTable.GetByName(CURVE);
+        private static readonly X9ECParameters curve = ECNamedCurveTable.GetByName(Const.EC.CURVE);
         /// <summary>
         /// BouncyCastle curve parameters
         /// </summary>
@@ -92,6 +85,28 @@ namespace Bitmessage.Cryptography
             PublicKey = new ECPublicKeyParameters(domainParams.ValidatePublicPoint(publicPoint), domainParams);
         }
 
+        public byte[] Serialize()
+        {
+            if(PrivateKey != null)
+            {
+                byte[] ret = new byte[Const.EC.PRIVKEY_LENGTH + 1];
+                SerializePrivate().CopyTo(ret, 1);
+                return ret;
+            }
+            return SerializePublic(true);
+        }
+
+        public void Serialize(Stream Output)
+        {
+            if (Output is null)
+            {
+                throw new ArgumentNullException(nameof(Output));
+            }
+
+            var Data = Serialize();
+            Output.Write(Data, 0, Data.Length);
+        }
+
         /// <summary>
         /// Serializes the private key into a storable format
         /// </summary>
@@ -120,6 +135,16 @@ namespace Bitmessage.Cryptography
         public byte[] GetRawPublic()
         {
             return SerializePublic(false)[1..];
+        }
+
+        public byte[] GetPublicX()
+        {
+            return GetRawPublic()[..(Const.EC.PUBKEY_LENGTH / 2)];
+        }
+
+        public byte[] GetPublicY()
+        {
+            return GetRawPublic()[(Const.EC.PUBKEY_LENGTH / 2)..];
         }
 
         /// <summary>
@@ -153,6 +178,29 @@ namespace Bitmessage.Cryptography
             //*/
             agreement.Init(Private.PrivateKey);
             return agreement.CalculateAgreement(PublicKey).ToByteArrayUnsigned();
+        }
+
+        public static ECKey Deserialize(byte[] Data)
+        {
+            if (Data[0] == 0)
+            {
+                return new ECKey(Data[1..]);
+            }
+            return FromPublic(Data);
+        }
+
+        public static ECKey Deserialize(Stream Source)
+        {
+            using var BR = Source.GetNativeReader();
+            var b = BR.ReadByte();
+            if (b == 0)
+            {
+                return new ECKey(BR.ReadBytes(Const.EC.PRIVKEY_LENGTH));
+            }
+            var ret = new byte[Const.EC.PUBKEY_LENGTH];
+            ret[0] = b;
+            BR.ReadBytes(Const.EC.PUBKEY_LENGTH - 1).CopyTo(ret, 1);
+            return FromPublic(ret);
         }
 
         /// <summary>

@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
-using System.Text;
 
 namespace Bitmessage.Global.Objects
 {
@@ -32,7 +29,6 @@ namespace Bitmessage.Global.Objects
 
         public byte[] Signature { get; set; }
 
-
         public Message()
         {
 
@@ -45,8 +41,8 @@ namespace Bitmessage.Global.Objects
             AddressVersion = BR.ReadVarInt();
             StreamNumber = BR.ReadVarInt();
             BehaviorBitfield = (Behavior)BR.ReadUInt32();
-            PubkeySign = BR.ReadBytes(64);
-            PubkeyEnc = BR.ReadBytes(64);
+            PubkeySign = BR.ReadBytes(Const.EC.PUBKEY_LENGTH);
+            PubkeyEnc = BR.ReadBytes(Const.EC.PUBKEY_LENGTH);
             if (AddressVersion >= 3)
             {
                 NonceTrialsPerByte = BR.ReadVarInt();

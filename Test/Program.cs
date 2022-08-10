@@ -34,6 +34,16 @@ namespace Test
             CheckNativeMethods();
             //TestAddressGenerator();
 
+            /*
+            var Broadcasts = EnumerateBroadcasts("BM-BcbRqcFFSQUUmXFKsPJgVQPSiFA3Xash").ToArray();
+
+            Console.WriteLine("Timeservice count: {0}", Broadcasts.Length);
+            if (Broadcasts.Length > 0)
+            {
+                Console.WriteLine(Broadcasts[0].Content);
+            }
+            //*/
+
             var Addr = AddressGenerator.GenerateDeterministicAddress("general", false);
 
             foreach (var BC in EnumerateMessages(Addr))
@@ -72,8 +82,8 @@ namespace Test
         private static IEnumerable<Bitmessage.Global.Objects.Broadcast> EnumerateBroadcasts(string Address)
         {
             byte[] Hash = AddressInfo.GetBroadcastHash(Address);
-            var AddrKey = Hash[..ECKey.PRIVKEY_LENGTH];
-            var AddrTag = Hash[ECKey.PRIVKEY_LENGTH..];
+            var AddrKey = Hash[..Const.EC.PRIVKEY_LENGTH];
+            var AddrTag = Hash[Const.EC.PRIVKEY_LENGTH..];
             var Key = new ECKey(AddrKey);
             foreach (var Entry in Storage.EnumerateAllContent())
             {
@@ -103,7 +113,7 @@ namespace Test
                         byte[] Result;
                         try
                         {
-                            Result = MessageDecrypter.DecryptBroadcast(Payload, Key);
+                            Result = ObjectDecrypter.DecryptBroadcast(Payload, Key);
                         }
                         catch (Exception ex)
                         {
@@ -131,7 +141,7 @@ namespace Test
                     byte[] Result;
                     try
                     {
-                        Result = MessageDecrypter.DecryptMessage(obj.Payload, Address);
+                        Result = ObjectDecrypter.DecryptMessage(obj.Payload, Address);
                     }
                     catch (Exception ex)
                     {

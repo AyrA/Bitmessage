@@ -8,22 +8,19 @@ namespace Bitmessage.Cryptography
 {
     public static class AddressGenerator
     {
-        public const ulong DEFAULT_VERSION = 4;
-        public const ulong DEFAULT_STREAM = 1;
-
-        public static AddressInfo GenerateRandomAddress(bool shortAddress, ulong stream = DEFAULT_STREAM, ulong version = DEFAULT_VERSION)
+        public static AddressInfo GenerateRandomAddress(bool shortAddress, ulong stream = Const.Addr.DEFAULT_STREAM, ulong version = Const.Addr.DEFAULT_VERSION)
         {
             var Addr = CreateAddress(shortAddress);
             Addr.ComputeEncodedAddress(version, stream);
             return Addr;
         }
 
-        public static AddressInfo GenerateDeterministicAddress(string baseKey, bool shortAddress, ulong stream = DEFAULT_STREAM, ulong version = DEFAULT_VERSION)
+        public static AddressInfo GenerateDeterministicAddress(string baseKey, bool shortAddress, ulong stream = Const.Addr.DEFAULT_STREAM, ulong version = Const.Addr.DEFAULT_VERSION)
         {
             return GenerateDeterministicAddress(Encoding.UTF8.GetBytes(baseKey), shortAddress, stream, version);
         }
 
-        public static AddressInfo GenerateDeterministicAddress(byte[] baseKey, bool shortAddress, ulong stream = DEFAULT_STREAM, ulong version = DEFAULT_VERSION)
+        public static AddressInfo GenerateDeterministicAddress(byte[] baseKey, bool shortAddress, ulong stream = Const.Addr.DEFAULT_STREAM, ulong version = Const.Addr.DEFAULT_VERSION)
         {
             var Addr = CreateDeterministicAddress(baseKey, shortAddress);
             Addr.ComputeEncodedAddress(version, stream);
