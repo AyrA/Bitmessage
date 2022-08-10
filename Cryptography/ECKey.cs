@@ -87,7 +87,7 @@ namespace Bitmessage.Cryptography
 
         public byte[] Serialize()
         {
-            if(PrivateKey != null)
+            if (PrivateKey != null)
             {
                 byte[] ret = new byte[Const.EC.PRIVKEY_LENGTH + 1];
                 SerializePrivate().CopyTo(ret, 1);
@@ -178,6 +178,37 @@ namespace Bitmessage.Cryptography
             //*/
             agreement.Init(Private.PrivateKey);
             return agreement.CalculateAgreement(PublicKey).ToByteArrayUnsigned();
+        }
+
+        public byte[] Sign(byte[] Data)
+        {
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+
+            var signer = SignerUtilities.GetSigner("SHA-256withECDSA");
+            signer.Init(true, PrivateKey);
+            signer.BlockUpdate(Data, 0, Data.Length);
+            return signer.GenerateSignature();
+        }
+
+        public bool Verify(byte[] Data, byte[] Signature)
+        {
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+
+            if (Signature is null)
+            {
+                throw new ArgumentNullException(nameof(Signature));
+            }
+
+            var signer = SignerUtilities.GetSigner("SHA-256withECDSA");
+            signer.Init(true, PrivateKey);
+            signer.BlockUpdate(Data, 0, Data.Length);
+            return signer.VerifySignature(Signature);
         }
 
         public static ECKey Deserialize(byte[] Data)
