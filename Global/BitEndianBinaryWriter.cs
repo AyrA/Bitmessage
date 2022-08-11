@@ -30,6 +30,21 @@ namespace Bitmessage.Global
             Write(VarInt.EncodeVarInt(value));
         }
 
+        public void WriteVarInt(uint value)
+        {
+            Write(VarInt.EncodeVarInt(value));
+        }
+
+        public void WriteVarInt(long value)
+        {
+            Write(VarInt.EncodeVarInt((ulong)value));
+        }
+
+        public void WriteVarInt(int value)
+        {
+            Write(VarInt.EncodeVarInt((uint)value));
+        }
+
         public void Write(bool data)
         {
             Write(data ? new byte[] { 1 } : new byte[] { 0 });

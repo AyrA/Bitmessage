@@ -46,9 +46,19 @@ namespace Bitmessage.Cryptography
         /// <param name="Data">Message</param>
         /// <param name="Address">Bitmessage address</param>
         /// <returns>Decrypted data on success, null on failure</returns>
-        public static byte[] DecryptMessage(byte[] Data, AddressInfo Address)
+        public static byte[] DecryptMessage(byte[] Data, AddressInfo Address, out bool HasVersion)
         {
-            return DecryptMessage(Data, Address, false);
+            var UseVersion = Data[0] == 1;
+            var Result = DecryptMessageInternal(Data, Address, ref UseVersion);
+            if (Result != null)
+            {
+                HasVersion = UseVersion;
+            }
+            else
+            {
+                HasVersion = false;
+            }
+            return Result;
         }
 
         /// <summary>
@@ -62,7 +72,7 @@ namespace Bitmessage.Cryptography
         /// If <paramref name="HasVersion"/> is false,
         /// decryption is attempted again with it set to "true" if it fails for the first time.
         /// </remarks>
-        private static byte[] DecryptMessage(byte[] Data, AddressInfo Address, bool HasVersion)
+        private static byte[] DecryptMessageInternal(byte[] Data, AddressInfo Address, ref bool HasVersion)
         {
             if (Data is null)
             {
@@ -95,7 +105,9 @@ namespace Bitmessage.Cryptography
                 }
                 catch
                 {
-                    return DecryptMessage(Data, Address, true);
+                    //Try decryption with the version
+                    HasVersion = true;
+                    return DecryptMessageInternal(Data, Address, ref HasVersion);
                 }
             }
             return Payload.VerifyAndDecrypt(Hashing.Sha512(Payload.PublicKey.Ecdh(Address.EncryptionKey)));

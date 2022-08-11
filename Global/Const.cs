@@ -38,6 +38,9 @@
             public const int AES_BLOCKSIZE = 16;
             public const int AES_KEYSIZE = 32;
             public const int HMAC_SIZE = 32;
+            public const int RIPE_SIZE = 20;
+            public const int SHA256_SIZE = 256 / 8;
+            public const int SHA512_SIZE = 512 / 8;
         }
     }
 }

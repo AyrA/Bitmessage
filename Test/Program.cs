@@ -123,6 +123,7 @@ namespace Test
                         }
                         if (Result != null)
                         {
+                            //TODO: Check signature
                             yield return new Bitmessage.Global.Objects.Broadcast(Result);
                         }
                     }
@@ -139,21 +140,96 @@ namespace Test
                 {
                     //Try to decrypt
                     byte[] Result;
+                    bool hasVersion;
                     try
                     {
-                        Result = ObjectDecrypter.DecryptMessage(obj.Payload, Address);
+                        Result = ObjectDecrypter.DecryptMessage(obj.Payload, Address, out hasVersion);
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        Debug.Print($"Error: {ex.Message}");
-                        Console.Write('!');
                         continue;
                     }
                     if (Result != null)
                     {
-                        yield return new Bitmessage.Global.Objects.Message(Result);
-                    }
+                        var msg = new Bitmessage.Global.Objects.Message(Result);
 
+                        //Extract sender address and keys from message
+                        var Sender = AddressInfo.FromRawPublicKeys(msg.PubkeyEnc, msg.PubkeySign);
+                        Sender.ComputeEncodedAddress(msg.AddressVersion, msg.StreamNumber);
+
+                        //Signature size + the varInt with the size.
+                        //Needed to cut off the signature when verifying the data
+                        var SignatureSize = VarInt.GetVarIntSize((ulong)msg.Signature.Length) + msg.Signature.Length;
+
+                        //This is the old way of verifying the signature
+                        if (Sender.SigningKey.Verify(Result[..^SignatureSize], msg.Signature))
+                        {
+                            yield return msg;
+                        }
+
+                        using var MS = new MemoryStream();
+                        using var BW = MS.GetWriter();
+
+                        //If we're here we have to deal with a more complex message signature
+                        //The message signature is a horrible mess.
+                        //It includes parts of the enclosing structure.
+                        //
+                        //Signature field description as per the docs:
+                        //  The ECDSA signature which covers the object header starting with the time,
+                        //  appended with the data described in this table down to the ack_data.
+                        //
+                        //The pybitmessage client does this:
+                        //   signedData = data[8:20] +
+                        //      encodeVarint(1) +
+                        //      encodeVarint(streamNumberAsClaimedByMsg) +
+                        //      decryptedData[:positionOfBottomOfAckData]
+                        //
+                        // data[8:20] is 12 bytes (expiresTime(4) + objectType(4))
+                        // encodeVarint(1) is just an overly complex way of using the byte 0x01
+                        // encodeVarint(streamNumberAsClaimedByMsg) is the streamNumber field
+                        // decryptedData[:positionOfBottomOfAckData] is all decrypted data up to the end of ack_data
+
+                        //data[8:20]
+                        BW.Write(Tools.ToUnixTime(obj.Expiration));
+                        BW.Write((uint)obj.ObjectType);
+
+                        //This should not be present after protocol v3 as per the docs,
+                        //But the exact opposite seems to be the case.
+                        //This is another case of the docs being completely wrong
+                        if (hasVersion)
+                        {
+                            msg.MessageVersion = 1;
+                            //obj.SerializeForSignature(MS);
+                            //MS.Write(VarInt.EncodeVarInt(1), 0, 1);
+                            
+                            //encodeVarint(1)
+                            BW.WriteVarInt(1);
+                        }
+                        //encodeVarint(streamNumberAsClaimedByMsg)
+                        BW.WriteVarInt(msg.StreamNumber);
+
+                        //decryptedData[:positionOfBottomOfAckData]
+                        BW.Write(Result[..^SignatureSize]);
+                        BW.Flush();
+
+                        //msg.SerializeForSignature(MS);
+                        var SignatureData = MS.ToArray();
+
+                        if (Sender.SigningKey.Verify(SignatureData, msg.Signature))
+                        {
+                            yield return msg;
+                        }
+                        else
+                        {
+                            Print.Warn("Decrypt OK but signature validation failed. This is not supposed to happen");
+                            Print.Warn("Sender is {0}", Sender.EncodedAddress);
+                            Print.Warn("Rcpt   is {0}", AddressInfo.GetAddress(msg.DestinationRipe, msg.AddressVersion, msg.StreamNumber));
+                            Print.Warn("Version : {0}", hasVersion ? 'Y' : 'N');
+#if DEBUG
+                            yield return msg;
+#endif
+                        }
+                    }
                 }
             }
         }

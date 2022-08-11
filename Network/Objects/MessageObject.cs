@@ -61,6 +61,11 @@ namespace Bitmessage.Network.Objects
 
         public static MessageObject FromData(byte[] Data)
         {
+            if (Data is null)
+            {
+                throw new ArgumentNullException(nameof(Data));
+            }
+
             var MO = new MessageObject();
             using (var MS = new MemoryStream(Data, false))
             {
@@ -71,6 +76,11 @@ namespace Bitmessage.Network.Objects
 
         public void Deserialize(Stream Input, int RemainingBytes)
         {
+            if (Input is null)
+            {
+                throw new ArgumentNullException(nameof(Input));
+            }
+
             if (RemainingBytes > MAX_OBJECT_SIZE)
             {
                 throw new InvalidDataException($"Object too big. It's {RemainingBytes} bytes but can be at most {MAX_OBJECT_SIZE} bytes");
@@ -143,13 +153,37 @@ namespace Bitmessage.Network.Objects
 
         public void Deserialize(Stream Input)
         {
+            if (Input is null)
+            {
+                throw new ArgumentNullException(nameof(Input));
+            }
+
             throw new InvalidOperationException("This function will not work without the second argument");
         }
 
         public void Serialize(Stream Output)
         {
+            if (Output is null)
+            {
+                throw new ArgumentNullException(nameof(Output));
+            }
+
             using var BW = Output.GetWriter();
             BW.Write(Nonce);
+            BW.Flush();
+            SerializeForSignature(Output);
+            BW.Write(Payload);
+            BW.Flush();
+        }
+
+        public void SerializeForSignature(Stream Output)
+        {
+            if (Output is null)
+            {
+                throw new ArgumentNullException(nameof(Output));
+            }
+
+            using var BW = Output.GetWriter();
             BW.Write(Tools.ToUnixTime(Expiration));
             BW.Write((uint)ObjectType);
             //Messages do not have a version
@@ -158,7 +192,7 @@ namespace Bitmessage.Network.Objects
                 BW.WriteVarInt(Version);
             }
             BW.WriteVarInt(StreamNumber);
-            BW.Write(Payload);
+            BW.Flush();
         }
     }
 

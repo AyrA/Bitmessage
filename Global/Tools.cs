@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace Bitmessage.Global
@@ -65,6 +66,13 @@ namespace Bitmessage.Global
         public static ulong ToUnixTime(DateTime DT)
         {
             return (ulong)DT.ToUniversalTime().Subtract(Epoch).TotalSeconds;
+        }
+
+        public static byte[] Serialize(Action<Stream> Serializer)
+        {
+            using var MS = new MemoryStream();
+            Serializer(MS);
+            return MS.ToArray();
         }
 
         public static string Hexlify(IEnumerable<byte> data, string Separator = ":")

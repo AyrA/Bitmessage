@@ -347,7 +347,7 @@ namespace Bitmessage.Cryptography
         }
 
         /// <summary>
-        /// Creates an address information object from a serialized public key
+        /// Creates an address information object from serialized public keys
         /// </summary>
         /// <param name="publicEncryptionKey">Public encryption key</param>
         /// <param name="publicSigningKey">Public signature key</param>
@@ -379,6 +379,48 @@ namespace Bitmessage.Cryptography
             {
                 SigningKey = ECKey.FromPublic(publicSigningKey),
                 EncryptionKey = ECKey.FromPublic(publicEncryptionKey)
+            };
+        }
+
+        /// <summary>
+        /// Creates an address information object from raw public keys
+        /// </summary>
+        /// <param name="publicEncryptionKey">Public encryption key</param>
+        /// <param name="publicSigningKey">Public signature key</param>
+        /// <returns>Address info with only the public keys filled in</returns>
+        /// <remarks>
+        /// You need to call <see cref="ComputeEncodedAddress(ulong, ulong)"/>
+        /// to get the bitmessage address after calling this function
+        /// </remarks>
+        public static AddressInfo FromRawPublicKeys(byte[] publicEncryptionKey, byte[] publicSigningKey)
+        {
+            if (publicEncryptionKey is null)
+            {
+                throw new ArgumentNullException(nameof(publicEncryptionKey));
+            }
+
+            if (publicSigningKey is null)
+            {
+                throw new ArgumentNullException(nameof(publicSigningKey));
+            }
+            if (publicEncryptionKey.Length != Const.EC.PUBKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {Const.EC.PUBKEY_LENGTH} bytes. Is it in serialized format?", nameof(publicEncryptionKey));
+            }
+            if (publicSigningKey.Length != Const.EC.PUBKEY_LENGTH)
+            {
+                throw new ArgumentException($"Key should be {Const.EC.PUBKEY_LENGTH} bytes. Is it in serialized format?", nameof(publicSigningKey));
+            }
+            var SigSerialized = new byte[publicSigningKey.Length + 1];
+            SigSerialized[0] = Const.EC.FULL_PK;
+            publicSigningKey.CopyTo(SigSerialized, 1);
+            var EncSerialized = new byte[publicEncryptionKey.Length + 1];
+            EncSerialized[0] = Const.EC.FULL_PK;
+            publicEncryptionKey.CopyTo(EncSerialized, 1);
+            return new AddressInfo()
+            {
+                SigningKey = ECKey.FromPublic(SigSerialized),
+                EncryptionKey = ECKey.FromPublic(EncSerialized)
             };
         }
     }

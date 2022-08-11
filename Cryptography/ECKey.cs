@@ -206,7 +206,7 @@ namespace Bitmessage.Cryptography
             }
 
             var signer = SignerUtilities.GetSigner("SHA-256withECDSA");
-            signer.Init(true, PrivateKey);
+            signer.Init(false, PublicKey);
             signer.BlockUpdate(Data, 0, Data.Length);
             return signer.VerifySignature(Signature);
         }
